@@ -9,7 +9,6 @@ import '../../components/time_info_card.dart';
 import 'package:flutter/material.dart';
 import '../../components/goal_add_bottom_sheet.dart';
 
-
 // 캘린더 관련 상수를 관리하는 클래스
 class CalendarConstants {
   // 타임그룹 정의 수정
@@ -946,59 +945,102 @@ class _GoalCardState extends State<GoalCard> {
                       children: [
                         Chip(
                           label: Text(
-                              '${CalendarConstants.formatTimeGroup(widget.goal.timegroup)}'),
-                          backgroundColor: Colors.blue.withOpacity(0.1),
+                            '${CalendarConstants.formatTimeGroup(widget.goal.timegroup)}',
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: Colors.blue[700],
+                            ),
+                          ),
+                          backgroundColor: Colors.blue[50],
+                          side: BorderSide(color: Colors.blue[100]!),
+                          visualDensity: VisualDensity.compact,
+                          materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                          padding: EdgeInsets.symmetric(horizontal: 4),
                         ),
                         const SizedBox(width: 8),
                         Chip(
                           label: Text(
-                              'Actions: ${widget.goal.completedActions}/${widget.goal.totalActions}'),
-                          backgroundColor: Colors.green.withOpacity(0.1),
+                            'Actions: ${widget.goal.completedActions}/${widget.goal.totalActions}',
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: Colors.green[700],
+                            ),
+                          ),
+                          backgroundColor: Colors.green[50],
+                          side: BorderSide(color: Colors.green[100]!),
+                          visualDensity: VisualDensity.compact,
+                          materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                          padding: EdgeInsets.symmetric(horizontal: 4),
                         ),
                         const SizedBox(width: 8),
                         if (widget.goal.totalActions > 0)
                           Chip(
                             label: Text(
-                                '${(widget.goal.completedActions / widget.goal.totalActions * 100).toStringAsFixed(0)}%'),
-                            backgroundColor: Colors.orange.withOpacity(0.1),
+                              '${(widget.goal.completedActions / widget.goal.totalActions * 100).toStringAsFixed(0)}%',
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: Colors.orange[700],
+                              ),
+                            ),
+                            backgroundColor: Colors.orange[50],
+                            side: BorderSide(color: Colors.orange[100]!),
+                            visualDensity: VisualDensity.compact,
+                            materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                            padding: EdgeInsets.symmetric(horizontal: 4),
                           ),
                         const SizedBox(width: 8),
                         Chip(
                           label: Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              Icon(Icons.access_time, size: 16),
+                              Icon(Icons.access_time, size: 14),
                               SizedBox(width: 4),
                               Text(
                                 '${totalExecutionTime.toStringAsFixed(1)}H',
                                 style: TextStyle(
-                                    fontWeight: FontWeight.bold,
-                                    color: Colors.red),
+                                  fontSize: 11,
+                                  color: Colors.red[700],
+                                ),
                               ),
                             ],
                           ),
-                          backgroundColor: Colors.yellow.withOpacity(0.1),
+                          backgroundColor: Colors.red[50],
+                          side: BorderSide(color: Colors.red[100]!),
+                          visualDensity: VisualDensity.compact,
+                          materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                          padding: EdgeInsets.symmetric(horizontal: 4),
                         ),
                         const SizedBox(width: 8),
                         Chip(
-                          label: Text('Order: ${widget.goal.order}'),
-                          backgroundColor: Colors.grey.withOpacity(0.1),
+                          label: Text(
+                            'Order: ${widget.goal.order}',
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: Colors.grey[700],
+                            ),
+                          ),
+                          backgroundColor: Colors.grey[50],
+                          side: BorderSide(color: Colors.grey[200]!),
+                          visualDensity: VisualDensity.compact,
+                          materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                          padding: EdgeInsets.symmetric(horizontal: 4),
                         ),
                       ],
                     ),
                   ),
                   if (widget.goal.tags.isNotEmpty)
                     Padding(
-                      padding: const EdgeInsets.only(top: 8),
+                      padding: const EdgeInsets.only(top: 4),
                       child: SingleChildScrollView(
                         scrollDirection: Axis.horizontal,
                         child: Row(
                           children: widget.goal.tags
                               .map((tag) => Padding(
-                                    padding: const EdgeInsets.only(right: 8),
+                                    padding: const EdgeInsets.only(right: 4),
                                     child: InkWell(
                                       onTap: () => _showTagEditDialog(tag),
                                       child: Chip(
+                                        avatar: Icon(Icons.edit, size: 14),
                                         label: Text(
                                           '#$tag',
                                           style: TextStyle(
@@ -1008,13 +1050,12 @@ class _GoalCardState extends State<GoalCard> {
                                         ),
                                         backgroundColor: Colors.blue[50],
                                         visualDensity: VisualDensity.compact,
-                                        materialTapTargetSize:
-                                            MaterialTapTargetSize.shrinkWrap,
-                                        padding:
-                                            EdgeInsets.symmetric(horizontal: 4),
-                                        deleteIcon: Icon(Icons.edit, size: 16),
-                                        onDeleted: () =>
-                                            _showTagEditDialog(tag),
+                                        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                        padding: EdgeInsets.only(left: 0, right: 4),
+                                        side: BorderSide(
+                                          color: Colors.blue[50]!,
+                                          width: 1,
+                                        ),
                                       ),
                                     ),
                                   ))
@@ -1286,12 +1327,14 @@ class _ActionCardState extends State<ActionCard> {
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: Colors.white,
+        border: Border.all(color: Colors.grey[200]!),
         borderRadius: BorderRadius.circular(8),
         boxShadow: [
           BoxShadow(
-            color: Colors.grey.withOpacity(0.1),
-            spreadRadius: 1,
-            blurRadius: 3,
+            color: Colors.grey.withOpacity(0.08),
+            spreadRadius: 0,
+            blurRadius: 8,
+            offset: Offset(0, 2),
           ),
         ],
       ),
@@ -1317,7 +1360,10 @@ class _ActionCardState extends State<ActionCard> {
                       )
                     : Text(
                         widget.action.action_name,
-                        style: TextStyle(fontWeight: FontWeight.bold),
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
               ),
               IconButton(
@@ -1354,10 +1400,11 @@ class _ActionCardState extends State<ActionCard> {
                   ),
                 )
               : Padding(
-                  padding: EdgeInsets.only(right: 40), // 오른쪽 여백 추가
+                  padding: EdgeInsets.only(right: 40),
                   child: Text(
                     widget.action.action_description,
                     style: TextStyle(
+                      fontSize: 12,
                       color: Colors.grey[600],
                     ),
                     overflow: TextOverflow.ellipsis,
@@ -1368,20 +1415,43 @@ class _ActionCardState extends State<ActionCard> {
           Row(
             children: [
               Chip(
-                label: Text('Order: ${widget.action.order}'),
-                backgroundColor: Colors.grey.withOpacity(0.1),
+                label: Text(
+                  'Order: ${widget.action.order}',
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: Colors.grey[700],
+                  ),
+                ),
+                backgroundColor: Colors.grey[50],
+                side: BorderSide(color: Colors.grey[200]!),
+                labelStyle: TextStyle(color: Colors.grey[700]),
               ),
               const SizedBox(width: 8),
               Chip(
-                label: Text(widget.action.action_status),
-                backgroundColor: Colors.green.withOpacity(0.1),
+                label: Text(
+                  widget.action.action_status,
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: Colors.green[700],
+                  ),
+                ),
+                backgroundColor: Colors.green[50],
+                side: BorderSide(color: Colors.green[100]!),
+                labelStyle: TextStyle(color: Colors.green[700]),
               ),
               const SizedBox(width: 8),
               if (!isEditing)
                 Chip(
                   label: Text(
-                      '${widget.action.action_execution_time.toStringAsFixed(1)}H'),
-                  backgroundColor: Colors.blue.withOpacity(0.1),
+                    '${widget.action.action_execution_time.toStringAsFixed(1)}H',
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: Colors.blue[700],
+                    ),
+                  ),
+                  backgroundColor: Colors.blue[50],
+                  side: BorderSide(color: Colors.blue[100]!),
+                  labelStyle: TextStyle(color: Colors.blue[700]),
                 )
               else
                 Expanded(
