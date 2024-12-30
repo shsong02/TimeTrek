@@ -19,7 +19,7 @@ class AuthenticationWidget extends StatefulWidget {
 }
 
 class _AuthenticationWidgetState extends State<AuthenticationWidget> {
-  late final bool isAndroid;
+  late bool isAndroid;
 
   // 상태 필드
   late AuthenticationModel _model;
@@ -35,13 +35,18 @@ class _AuthenticationWidgetState extends State<AuthenticationWidget> {
   @override
   void initState() {
     super.initState();
-    isAndroid = Theme.of(context).platform == TargetPlatform.android;
     _model = AuthenticationModel();
     emailAddressTextController = TextEditingController();
     emailAddressFocusNode = FocusNode();
 
     passwordTextController = TextEditingController();
     passwordFocusNode = FocusNode();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    isAndroid = Theme.of(context).platform == TargetPlatform.android;
   }
 
   @override
@@ -283,8 +288,7 @@ class _AuthenticationWidgetState extends State<AuthenticationWidget> {
                                         0.0, 0.0, 0.0, 16.0),
                                     child: ElevatedButton(
                                       onPressed: () async {
-                                        final user =
-                                            await authManager.signInWithEmail(
+                                        final user = await authManager.signInWithEmail(
                                           context,
                                           emailAddressTextController.text,
                                           passwordTextController.text,
@@ -292,8 +296,10 @@ class _AuthenticationWidgetState extends State<AuthenticationWidget> {
                                         if (user == null) {
                                           return;
                                         }
-
-                                        context.pushNamed('CreateGoals');
+                                        
+                                        if (context.mounted) {
+                                          context.goNamed('CreateGoals');
+                                        }
                                       },
                                       style: ElevatedButton.styleFrom(
                                         backgroundColor: Theme.of(context).colorScheme.primary,
@@ -353,13 +359,14 @@ class _AuthenticationWidgetState extends State<AuthenticationWidget> {
                                         0.0, 0.0, 0.0, 16.0),
                                     child: ElevatedButton(
                                       onPressed: () async {
-                                        final user = await authManager
-                                            .signInWithGoogle(context);
+                                        final user = await authManager.signInWithGoogle(context);
                                         if (user == null) {
                                           return;
                                         }
-
-                                        context.pushNamed('CreateGoals');
+                                        
+                                        if (context.mounted) {
+                                          context.goNamed('CreateGoals');
+                                        }
                                       },
                                       style: ElevatedButton.styleFrom(
                                         backgroundColor: Theme.of(context).colorScheme.surface,
@@ -394,13 +401,14 @@ class _AuthenticationWidgetState extends State<AuthenticationWidget> {
                                                   0.0, 0.0, 0.0, 16.0),
                                           child: ElevatedButton(
                                             onPressed: () async {
-                                              final user = await authManager
-                                                  .signInWithApple(context);
+                                              final user = await authManager.signInWithApple(context);
                                               if (user == null) {
                                                 return;
                                               }
-
-                                              context.pushNamed('CreateGoals');
+                                              
+                                              if (context.mounted) {
+                                                context.goNamed('CreateGoals');
+                                              }
                                             },
                                             style: ElevatedButton.styleFrom(
                                               backgroundColor: Theme.of(context).colorScheme.surface,

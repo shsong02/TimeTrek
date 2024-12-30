@@ -1,6 +1,11 @@
 import 'package:flutter/material.dart';
 
 class TimeTrekTheme {
+  static Color vitaflowBrandColor = const Color(0xFF00BFA5); // VitaFlow 시그니처 컬러(청록 계열)
+  static Color successColor = const Color(0xFF29B6F6); // “도전과제” 완료, 자랑하기 강조
+  static Color alertColor = const Color(0xFFFFA726);   // 알림 및 경고(주의)
+  static Color proudMomentColor = const Color(0xFFFFD54F); // 자랑할만한 성과 하이라이트
+
   static ThemeData lightTheme = ThemeData(
     primarySwatch: Colors.blue,
     brightness: Brightness.light,
@@ -14,10 +19,13 @@ class TimeTrekTheme {
       primary: Colors.blue,
       secondary: Colors.blueAccent,
       surface: Colors.white,
-      background: Colors.grey[100]!,
+      background: Colors.grey,
       error: Colors.red,
+    ).copyWith(
+      primary: vitaflowBrandColor,
+      tertiary: proudMomentColor,
     ),
-    textTheme: TextTheme(
+    textTheme: const TextTheme(
       displaySmall: TextStyle(
         color: Colors.black87,
         fontSize: 24,
@@ -29,11 +37,11 @@ class TimeTrekTheme {
         fontWeight: FontWeight.bold,
       ),
       labelMedium: TextStyle(
-        color: Colors.grey[600],
+        color: Colors.black54,
         fontSize: 14,
       ),
       labelLarge: TextStyle(
-        color: Colors.grey[700],
+        color: Colors.black87,
         fontSize: 16,
       ),
       bodyLarge: TextStyle(
@@ -54,13 +62,31 @@ class TimeTrekTheme {
         fontSize: 18,
         fontWeight: FontWeight.w500,
       ),
+    ).copyWith(
+      titleLarge: TextStyle(
+        color: vitaflowBrandColor,
+        fontSize: 20,
+        fontWeight: FontWeight.bold,
+      ),
+      headlineSmall: TextStyle(
+        color: proudMomentColor,
+        fontSize: 22,
+        fontWeight: FontWeight.w700,
+      ),
+    ),
+    elevatedButtonTheme: ElevatedButtonThemeData(
+      style: ElevatedButton.styleFrom(
+        backgroundColor: vitaflowBrandColor,
+        foregroundColor: Colors.white,
+        textStyle: const TextStyle(fontWeight: FontWeight.bold),
+      ),
     ),
   );
 
   static ThemeData darkTheme = ThemeData(
     primarySwatch: Colors.blue,
     brightness: Brightness.dark,
-    scaffoldBackgroundColor: Colors.grey[900],
+    scaffoldBackgroundColor: Colors.grey,
     appBarTheme: AppBarTheme(
       backgroundColor: Colors.grey[850],
       foregroundColor: Colors.white,
@@ -69,11 +95,14 @@ class TimeTrekTheme {
     colorScheme: ColorScheme.dark(
       primary: Colors.blue,
       secondary: Colors.blueAccent,
-      surface: Colors.grey[850]!,
-      background: Colors.grey[800]!,
+      surface: Colors.grey,
+      background: Colors.grey,
       error: Colors.red,
+    ).copyWith(
+      primary: vitaflowBrandColor,
+      tertiary: proudMomentColor,
     ),
-    textTheme: TextTheme(
+    textTheme: const TextTheme(
       displaySmall: TextStyle(
         color: Colors.white,
         fontSize: 24,
@@ -85,11 +114,11 @@ class TimeTrekTheme {
         fontWeight: FontWeight.bold,
       ),
       labelMedium: TextStyle(
-        color: Colors.grey[400],
+        color: Colors.grey,
         fontSize: 14,
       ),
       labelLarge: TextStyle(
-        color: Colors.grey[300],
+        color: Colors.grey,
         fontSize: 16,
       ),
       bodyLarge: TextStyle(
@@ -109,6 +138,24 @@ class TimeTrekTheme {
         color: Colors.white,
         fontSize: 18,
         fontWeight: FontWeight.w500,
+      ),
+    ).copyWith(
+      titleLarge: TextStyle(
+        color: vitaflowBrandColor,
+        fontSize: 20,
+        fontWeight: FontWeight.bold,
+      ),
+      headlineSmall: TextStyle(
+        color: proudMomentColor,
+        fontSize: 22,
+        fontWeight: FontWeight.w700,
+      ),
+    ),
+    elevatedButtonTheme: ElevatedButtonThemeData(
+      style: ElevatedButton.styleFrom(
+        backgroundColor: vitaflowBrandColor,
+        foregroundColor: Colors.white,
+        textStyle: const TextStyle(fontWeight: FontWeight.bold),
       ),
     ),
   );

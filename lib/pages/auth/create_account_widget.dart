@@ -322,10 +322,8 @@ class _CreateAccountWidgetState extends State<CreateAccountWidget> {
                                               ?.text) {
                                         ScaffoldMessenger.of(context)
                                             .showSnackBar(
-                                          SnackBar(
-                                            content: Text(
-                                              'Passwords don\'t match!',
-                                            ),
+                                          const SnackBar(
+                                            content: Text('비밀번호가 일치하지 않습니다!'),
                                           ),
                                         );
                                         return;
@@ -341,7 +339,9 @@ class _CreateAccountWidgetState extends State<CreateAccountWidget> {
                                         return;
                                       }
 
-                                      context.go('/create-goals');
+                                      if (context.mounted) {
+                                        context.goNamed('CreateGoals');
+                                      }
                                     },
                                     child: Text('Create Account'),
                                     style: ElevatedButton.styleFrom(

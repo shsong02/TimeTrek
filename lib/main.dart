@@ -5,11 +5,13 @@ import 'package:provider/provider.dart';
 import '/theme/time_trek_theme.dart';
 import '/backend/app_state.dart';
 import '/backend/firebase/firebase_config.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 import '/pages/calendar/action_calendar.dart';
 import '/pages/actions/create_action.dart';
 import '/pages/evaluation/goal_evaluation.dart';
 import '/pages/chat/chat_widget.dart';
+import '/pages/auth/authentication_widget.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -57,7 +59,15 @@ class _MyAppState extends State<MyApp> {
       theme: TimeTrekTheme.lightTheme,
       darkTheme: TimeTrekTheme.darkTheme,
       themeMode: _themeMode,
-      home: const NavBarPage(),
+      home: StreamBuilder<User?>(
+        stream: FirebaseAuth.instance.authStateChanges(),
+        builder: (context, snapshot) {
+          if (snapshot.hasData) {
+            return const NavBarPage(initialPage: 'CreateGoals');
+          }
+          return const AuthenticationWidget();
+        },
+      ),
     );
   }
 }
