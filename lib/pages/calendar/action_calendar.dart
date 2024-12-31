@@ -18,6 +18,7 @@ import 'package:flutter_markdown/flutter_markdown.dart';
 
 import '/backend/backend.dart';
 import '/components/new_calendar_event.dart';
+import '/theme/time_trek_theme.dart'; // time_trek_theme 패키지 추가
 
 class ActionCalendar extends StatefulWidget {
   const ActionCalendar({
@@ -125,72 +126,75 @@ class _ActionCalendarState extends State<ActionCalendar> {
 
   @override
   Widget build(BuildContext context) {
-    return StreamBuilder<List<CalendarEventRecord>>(
-      stream: _refreshController == null
-          ? queryCalendarEventRecord()
-          : Rx.merge([
-              queryCalendarEventRecord(),
-              _refreshController!.stream
-                  .flatMap((_) => queryCalendarEventRecord())
-            ]),
-      builder: (context, snapshot) {
-        if (!snapshot.hasData) {
-          return const Center(child: CircularProgressIndicator());
-        }
+    return Theme(
+      data: TimeTrekTheme.lightTheme, // time_trek_theme 적용
+      child: StreamBuilder<List<CalendarEventRecord>>(
+        stream: _refreshController == null
+            ? queryCalendarEventRecord()
+            : Rx.merge([
+                queryCalendarEventRecord(),
+                _refreshController!.stream
+                    .flatMap((_) => queryCalendarEventRecord())
+              ]),
+        builder: (context, snapshot) {
+          if (!snapshot.hasData) {
+            return const Center(child: CircularProgressIndicator());
+          }
 
-        return Column(
-          children: [
-            // 뷰 전환 버튼 추가
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                TextButton(
-                  // controller를 사용하여 뷰 변경
-                  onPressed: () => _controller.view = CalendarView.month,
-                  child: Text('월간'),
-                ),
-                TextButton(
-                  // controller를 사용하여 뷰 변경
-                  onPressed: () => _controller.view = CalendarView.week,
-                  child: Text('주간'),
-                ),
-                TextButton(
-                  onPressed: () => _controller.view = CalendarView.schedule,
-                  child: Text('일정'),
-                ),
-              ],
-            ),
-            Expanded(
-              child: SfCalendar(
-                controller: _controller, // controller 추가
-                dataSource: EventDataSource(snapshot.data!),
-                monthViewSettings: const MonthViewSettings(
-                  showAgenda: true,
-                ),
-                scheduleViewSettings: const ScheduleViewSettings(
-                  hideEmptyScheduleWeek: true,
-                  monthHeaderSettings: MonthHeaderSettings(
-                    height: 50,
-                    textAlign: TextAlign.center,
+          return Column(
+            children: [
+              // 뷰 전환 버튼 추가
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  TextButton(
+                    // controller를 사용하여 뷰 변경
+                    onPressed: () => _controller.view = CalendarView.month,
+                    child: Text('월간'),
+                  ),
+                  TextButton(
+                    // controller를 사용하여 뷰 변경
+                    onPressed: () => _controller.view = CalendarView.week,
+                    child: Text('주간'),
+                  ),
+                  TextButton(
+                    onPressed: () => _controller.view = CalendarView.schedule,
+                    child: Text('일정'),
+                  ),
+                ],
+              ),
+              Expanded(
+                child: SfCalendar(
+                  controller: _controller, // controller 추가
+                  dataSource: EventDataSource(snapshot.data!),
+                  monthViewSettings: const MonthViewSettings(
+                    showAgenda: true,
+                  ),
+                  scheduleViewSettings: const ScheduleViewSettings(
+                    hideEmptyScheduleWeek: true,
+                    monthHeaderSettings: MonthHeaderSettings(
+                      height: 70,
+                      textAlign: TextAlign.center,
+                    ),
+                  ),
+                  onTap: (CalendarTapDetails details) {
+                    if (details.appointments != null &&
+                        details.appointments!.isNotEmpty) {
+                      _showReminderSettings(
+                          details.appointments!.first as CalendarEventRecord);
+                    }
+                  },
+                  appointmentTextStyle: const TextStyle(
+                    fontFamily: 'NotoSansKR',
+                    fontSize: 12,
+                    color: Colors.white,
                   ),
                 ),
-                onTap: (CalendarTapDetails details) {
-                  if (details.appointments != null &&
-                      details.appointments!.isNotEmpty) {
-                    _showReminderSettings(
-                        details.appointments!.first as CalendarEventRecord);
-                  }
-                },
-                appointmentTextStyle: const TextStyle(
-                  fontFamily: 'NotoSansKR',
-                  fontSize: 12,
-                  color: Colors.white,
-                ),
               ),
-            ),
-          ],
-        );
-      },
+            ],
+          );
+        },
+      ),
     );
   }
 }
@@ -480,7 +484,10 @@ class _ChangedActionEventWidgetState extends State<ChangedActionEventWidget> {
         .where((minutes) => minutes <= minutesUntilEvent)
         .map((minutes) => DropdownMenuItem(
               value: minutes,
-              child: Text('$minutes분 전'),
+              child: Text(
+                '$minutes분 전',
+                style: TextStyle(fontSize: 12),
+              ),
             ))
         .toList();
 
@@ -526,7 +533,10 @@ class _ChangedActionEventWidgetState extends State<ChangedActionEventWidget> {
           items: statusDescriptions.entries.map((entry) {
             return DropdownMenuItem<String>(
               value: entry.key,
-              child: Text(entry.key),
+              child: Text(
+                entry.key,
+                style: TextStyle(fontSize: 12),
+              ),
             );
           }).toList(),
           onChanged: (value) {
@@ -718,7 +728,10 @@ class _ChangedActionEventWidgetState extends State<ChangedActionEventWidget> {
       children: [
         ListTile(
           leading: Icon(Icons.image),
-          title: Text('이미지 업로드'),
+          title: Text(
+            '이미지 업로드',
+            style: TextStyle(fontSize: 14),
+          ),
           trailing: IconButton(
             icon: Icon(Icons.add_photo_alternate),
             onPressed: () async {
@@ -802,7 +815,10 @@ class _ChangedActionEventWidgetState extends State<ChangedActionEventWidget> {
       children: [
         ListTile(
           leading: Icon(Icons.attach_file),
-          title: Text('파일 업로드'),
+          title: Text(
+            '파일 업로드',
+            style: TextStyle(fontSize: 14),
+          ),
           trailing: IconButton(
             icon: Icon(Icons.add_box),
             onPressed: () async {

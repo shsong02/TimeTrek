@@ -42,8 +42,8 @@ dependencies:
   cloud_firestore: ^4.15.5
   firebase_auth: ^4.17.5
   http: ^1.2.0
-  syncfusion_flutter_calendar: ^24.2.8
-  syncfusion_flutter_sliders: ^24.2.8
+  syncfusion_flutter_calendar: ^27.2.0
+  syncfusion_flutter_sliders: ^27.2.0
   logger: ^2.0.2+1
   auto_size_text: ^3.0.0
   font_awesome_flutter: ^10.7.0
