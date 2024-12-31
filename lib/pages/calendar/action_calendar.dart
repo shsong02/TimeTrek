@@ -311,6 +311,13 @@ class _ChangedActionEventWidgetState extends State<ChangedActionEventWidget> {
   Map<String, dynamic>? _cachedData;
   List<DateTime>? _cachedTimeSlots;
 
+  // 이미지 업로드 목적 선택을 위한 변수
+  String? selectedImagePurpose = 'purpose1'; // 기본값을 'purpose1'으로 설정
+
+  // 이미지 업로드 관련 변수
+  List<XFile> selectedImages = [];
+  List<String> imageUrls = [];
+
   @override
   void initState() {
     super.initState();
@@ -380,7 +387,6 @@ class _ChangedActionEventWidgetState extends State<ChangedActionEventWidget> {
 
   // 파일 업로드 관련 변수
   List<PlatformFile> selectedFiles = [];
-  List<XFile> selectedImages = [];
 
   // extended 관련 변수 추가
   double? selectedHours;
@@ -390,7 +396,6 @@ class _ChangedActionEventWidgetState extends State<ChangedActionEventWidget> {
   List<DateTime>? availableTimeSlots;
   DateTime? selectedStartTime;
 
-  List<String> imageUrls = [];
   List<String> fileUrls = [];
 
   DateTime? selectedTransferTime;
@@ -735,77 +740,153 @@ class _ChangedActionEventWidgetState extends State<ChangedActionEventWidget> {
           trailing: IconButton(
             icon: Icon(Icons.add_photo_alternate),
             onPressed: () async {
-              // action_list에서 reference_image_count 확인
-              final actionListQuery = await FirebaseFirestore.instance
-                  .collection('action_list')
-                  .where('action_name', isEqualTo: widget.event.actionName)
-                  .get();
-
-              if (actionListQuery.docs.isEmpty) return;
-
-              final currentCount =
-                  actionListQuery.docs.first.data()['reference_image_count'] ??
-                      0;
-
-              if (currentCount >= AppState.actionMaxImageCount) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text('이미지 업로드 제한 횟수를 초과했습니다.')),
-                );
-                return;
-              }
-
+              // 이미지 선택 로직
               final ImagePicker picker = ImagePicker();
-              final XFile? image =
-                  await picker.pickImage(source: ImageSource.gallery);
+              final XFile? image = await picker.pickImage(source: ImageSource.gallery);
 
               if (image != null) {
-                // 이미지 크기 확인 및 리사이즈
-                final bytes = await image.readAsBytes();
-                final imageSizeInMB = bytes.length / (1024 * 1024);
-
-                if (imageSizeInMB > AppState.actionLimitImageMBSize) {
-                  // 이미지 리사이즈 로직 구현
-                  // ... 리사이즈 코드 ...
-                }
-
                 setState(() {
+                  // 기존 이미지 삭제
+                  selectedImages.clear();
+                  imageUrls.clear();
+                  // 새로운 이미지 추가
                   selectedImages.add(image);
+                  selectedImagePurpose = null; // 목적 초기화
                 });
               }
             },
           ),
         ),
         if (selectedImages.isNotEmpty)
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: selectedImages.map((image) {
-              return Stack(
+          Column(
+            children: [
+              Row(
                 children: [
-                  Image.network(
-                    image.path,
-                    width: 100,
-                    height: 100,
-                    fit: BoxFit.cover,
-                  ),
-                  Positioned(
-                    right: 0,
-                    top: 0,
-                    child: IconButton(
-                      icon: Icon(Icons.close),
-                      onPressed: () {
-                        setState(() {
-                          selectedImages.remove(image);
-                        });
-                      },
+                  // 이미지 프리뷰를 더 크게 하고 드래그 가능하도록 설정
+                  Expanded(
+                    child: InteractiveViewer(
+                      panEnabled: true, // 드래그 가능
+                      boundaryMargin: EdgeInsets.all(20),
+                      minScale: 0.5,
+                      maxScale: 2.0,
+                      child: Container(
+                        width: 200, // 고정 너비
+                        height: 200, // 고정 높이
+                        child: Image.network(
+                          selectedImages.first.path,
+                          fit: BoxFit.contain,
+                        ),
+                      ),
                     ),
                   ),
+                  SizedBox(width: 16),
+                  Column(
+                    children: [
+                      ToggleButtons(
+                        borderColor: Colors.grey,
+                        selectedBorderColor: Colors.blue,
+                        fillColor: Colors.blue.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(8),
+                        children: [
+                          Tooltip(
+                            message: 'save history image',
+                            child: Icon(Icons.save, color: Colors.blue, size: 20),
+                          ),
+                          Tooltip(
+                            message: 'analyze image to text',
+                            child: Icon(Icons.text_fields, color: Colors.blue, size: 20),
+                          ),
+                        ],
+                        isSelected: [
+                          selectedImagePurpose == 'purpose1', // 초기 선택 상태 설정
+                          selectedImagePurpose == 'purpose2'
+                        ],
+                        onPressed: (index) {
+                          setState(() {
+                            selectedImagePurpose = index == 0 ? 'purpose1' : 'purpose2';
+                          });
+                        },
+                      ),
+                      SizedBox(height: 16),
+                      if (selectedImagePurpose == 'purpose2')
+                        ElevatedButton(
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.blue,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                          ),
+                          onPressed: _analyzeImage,
+                          child: Text('Analyze', style: TextStyle(fontSize: 14)),
+                        ),
+                    ],
+                  ),
                 ],
-              );
-            }).toList(),
+              ),
+            ],
           ),
       ],
     );
+  }
+
+  // 이미지 분석을 위한 API 호출 메서드
+  Future<void> _analyzeImage() async {
+    try {
+      final image = selectedImages.first; // 첫 번째 이미지를 사용
+      final imageBytes = await image.readAsBytes();
+
+      // Timestamp를 ISO 문자열로 변환하는 헬퍼 함수
+      dynamic convertTimestampFields(dynamic value) {
+        if (value is Timestamp) {
+          return value.toDate().toIso8601String();
+        } else if (value is Map) {
+          return value.map((key, val) => MapEntry(key, convertTimestampFields(val)));
+        } else if (value is List) {
+          return value.map((val) => convertTimestampFields(val)).toList();
+        }
+        return value;
+      }
+
+      // 전체 데이터의 깊은 복사본 생성 및 Timestamp 변환
+      final actionList = (_cachedData?['action_list'] as List).map((item) {
+        return convertTimestampFields(item);
+      }).toList();
+
+      final actionHistories = (_cachedData?['action_histories'] as List).map((item) {
+        return convertTimestampFields(item);
+      }).toList();
+
+      final requestBody = {
+        'goal_name': widget.event.goalName,
+        'action_name': widget.event.actionName,
+        'action_target_time': widget.event.startTime?.toIso8601String(),
+        'related_action_list': actionList,
+        'send_email': transferEmail,
+        'action_history': actionHistories,
+        'image': base64Encode(imageBytes), // 이미지 바이너리 파일을 Base64로 인코딩
+      };
+
+      final response = await http.post(
+        Uri.parse('https://shsong83.app.n8n.cloud/webhook-test/timetrek-image-to-text'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode(requestBody),
+      );
+
+      if (response.statusCode == 200) {
+        final responseData = jsonDecode(response.body);
+        setState(() {
+          markdownText = responseData['markdown'] ?? '';
+        });
+      } else {
+        throw Exception('이미지 분석 실패: ${response.statusCode}');
+      }
+    } catch (e) {
+      print('이미지 분석 오류: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('이미지 분석 중 오류가 발생했습니다: $e')),
+      );
+    }
   }
 
   // ActionEventUploadFile 위젯
@@ -1628,6 +1709,13 @@ class _ChangedActionEventWidgetState extends State<ChangedActionEventWidget> {
                       child: Text('취소'),
                     ),
                     ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.blue,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                      ),
                       onPressed: _canSave() ? _handleSave : null,
                       child: Text('저장'),
                     ),
