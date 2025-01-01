@@ -8,7 +8,7 @@ Future initFirebase() async {
             apiKey: "AIzaSyAQaF18vP85sW0ztZBhPR7TEqGoMeWeF-0",
             authDomain: "plan-thwcdc.firebaseapp.com",
             projectId: "plan-thwcdc",
-            storageBucket: "plan-thwcdc.appspot.com",
+            storageBucket: "gs://plan-thwcdc.firebasestorage.app",
             messagingSenderId: "644762479095",
             appId: "1:644762479095:web:fc73ec0013aaecf76b66f2"));
   } else {

@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 class AppState extends ChangeNotifier {
   static final AppState _instance = AppState._internal();
   factory AppState() => _instance;
   AppState._internal();
+
+  final currentUser = FirebaseAuth.instance.currentUser;
 
   // 이미지 관련 상수
   static const int actionMaxImageCount = 10;

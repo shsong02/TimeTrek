@@ -1275,14 +1275,29 @@ class _ChangedActionEventWidgetState extends State<ChangedActionEventWidget> {
 
   // 저장 로직 수정
   Future<void> _handleSave() async {
+    print('=== _handleSave 시작 ===');
     try {
-      // 이미지 업로드 먼저 수행
-      List<String> uploadedImageUrls = await _uploadImages();
+      if (!mounted) {
+        print('컴포넌트가 마운트되지 않음');
+        return;
+      }
       
+      final scaffoldMessenger = ScaffoldMessenger.of(context);
+      final navigator = Navigator.of(context);
+
+      print('이미지 업로드 시작');
+      List<String> uploadedImageUrls = await _uploadImages();
+      print('이미지 업로드 완료: ${uploadedImageUrls.length}개');
+      
+      print('파일 업로드 시작');
+      List<String> uploadedFileUrls = await _uploadFiles();
+      print('파일 업로드 완료: ${uploadedFileUrls.length}개');
+      
+      print('상태 처리 시작: $selectedStatus');
       // 상태별 처리
       if (selectedStatus == 'extended') {
         if (selectedHours == null) {
-          ScaffoldMessenger.of(context).showSnackBar(
+          scaffoldMessenger.showSnackBar(
             SnackBar(content: Text('연장 시간을 선택해주세요')),
           );
           return;
@@ -1291,12 +1306,12 @@ class _ChangedActionEventWidgetState extends State<ChangedActionEventWidget> {
         await _handleExtended();
       } else if (selectedStatus == 'transferred') {
         if (!isValidEmail || selectedTransferTime == null) {
-          ScaffoldMessenger.of(context).showSnackBar(
+          scaffoldMessenger.showSnackBar(
             SnackBar(content: Text('이메일과 시간을 모두 올바르게 입력해주세요')),
           );
           return;
         }
-        await _handleTransferred(); // 이메일 전송 처리
+        await _handleTransferred();
         
         // calendar_event 업데이트
         await widget.event.reference.update({
@@ -1324,39 +1339,34 @@ class _ChangedActionEventWidgetState extends State<ChangedActionEventWidget> {
         await _handleCompleted();
       }
 
-      // action_history 생성
+      print('action_history 생성 시작');
       await _createActionHistory();
+      print('action_history 생성 완료');
 
-      // UI 업데이트 및 화면 닫기
       widget.refreshController.add(null);
+      print('UI 업데이트 완료');
 
-      // 상태 업데이트를 위해 setState 호출
-      if (mounted) {
-        setState(() {});
-      }
+      if (mounted) setState(() {});
 
-      // 화면 닫기 전에 짧은 지연 추가
       await Future.delayed(const Duration(milliseconds: 300));
+      print('지연 시간 완료');
 
-      // 화면 닫기
-      if (context.mounted) {
-        Navigator.pop(context);
-
-        // 스낵바로 성공 메시지 표시
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('변경사항이 저장되었습니다'),
-            duration: const Duration(seconds: 2),
-          ),
+      if (mounted) {
+        navigator.pop();
+        scaffoldMessenger.showSnackBar(
+          SnackBar(content: Text('변경사항이 저장되었습니다')),
         );
+        print('화면 닫기 및 스낵바 표시 완료');
       }
     } catch (e) {
-      if (context.mounted) {
+      print('저장 중 오류 발생: $e');
+      if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('저장 중 오류가 발생했습니다: $e')),
         );
       }
     }
+    print('=== _handleSave 종료 ===\n');
   }
 
   // action_id 조회
@@ -1756,18 +1766,146 @@ class _ChangedActionEventWidgetState extends State<ChangedActionEventWidget> {
   }
 
   Future<List<String>> _uploadImages() async {
+    print('=== _uploadImages 시작 ===');
     List<String> uploadedImageUrls = [];
     
-    for (var image in selectedImages) {
-      final imageBytes = await image.readAsBytes();
-      final imagePath = 'action_images/${DateTime.now().millisecondsSinceEpoch}_${image.name}';
-      final imageRef = FirebaseStorage.instance.ref().child(imagePath);
-      await imageRef.putData(imageBytes);
-      final imageUrl = await imageRef.getDownloadURL();
-      uploadedImageUrls.add(imageUrl);
+    try {
+      final uid = Provider.of<AppState>(context, listen: false).currentUser?.uid;
+      if (uid == null) throw Exception('사용자 ID를 찾을 수 없습니다.');
+
+      final safeGoalName = widget.event.goalName?.replaceAll(RegExp(r'[^a-zA-Z0-9가-힣]'), '_') ?? 'unknown';
+      final safeActionName = widget.event.actionName?.replaceAll(RegExp(r'[^a-zA-Z0-9가-힣]'), '_') ?? 'unknown';
+      final basePath = 'users/$uid/$safeGoalName/$safeActionName';
+      final storageRef = FirebaseStorage.instance.ref();
+
+      for (var image in selectedImages) {
+        final imageBytes = await image.readAsBytes();
+        final timestamp = DateTime.now().millisecondsSinceEpoch;
+        final safeFileName = '${timestamp}_${image.name.replaceAll(RegExp(r'[^a-zA-Z0-9._]'), '_')}';
+        final imagePath = '$basePath/images/$safeFileName';
+        
+        final metadata = SettableMetadata(
+          contentType: 'image/jpeg',
+          customMetadata: {
+            'uploadedBy': uid,
+            'uploadedAt': DateTime.now().toIso8601String(),
+          },
+        );
+        
+        final imageRef = storageRef.child(imagePath);
+        await imageRef.putData(imageBytes, metadata);
+        final imageUrl = await imageRef.getDownloadURL();
+        uploadedImageUrls.add(imageUrl);
+      }
+
+      if (uploadedImageUrls.isNotEmpty) {
+        final actionListQuery = await FirebaseFirestore.instance
+            .collection('action_list')
+            .where('action_name', isEqualTo: widget.event.actionName)
+            .get();
+
+        if (actionListQuery.docs.isNotEmpty) {
+          await actionListQuery.docs.first.reference.update({
+            'reference_image_count': FieldValue.increment(uploadedImageUrls.length),
+            'reference_image_urls': FieldValue.arrayUnion(uploadedImageUrls),
+          });
+        }
+      }
+    } catch (e) {
+      print('이미지 업로드 오류: $e');
+      throw Exception('이미지 업로드 실패: $e');
     }
     
+    print('=== _uploadImages 종료 ===');
     return uploadedImageUrls;
+  }
+
+  Future<List<String>> _uploadFiles() async {
+    List<String> uploadedFileUrls = [];
+    
+    try {
+      // 현재 사용자 ID 가져오기
+      final uid = Provider.of<AppState>(context, listen: false).currentUser?.uid;
+      if (uid == null) throw Exception('사용자 ID를 찾을 수 없습니다.');
+
+      // 저장 경로 설정
+      final basePath = 'uid/$uid/${widget.event.goalName}/${widget.event.actionName}';
+      
+      // Firebase Storage 참조 생성
+      final storageRef = FirebaseStorage.instance.ref();
+      
+      // 기존 파일 삭제
+      try {
+        final filesList = await storageRef.child('$basePath/file').listAll();
+        for (var item in filesList.items) {
+          await item.delete();
+        }
+      } catch (e) {
+        print('기존 파일 삭제 중 오류 (무시 가능): $e');
+      }
+
+      // 새 파일 업로드
+      for (var file in selectedFiles) {
+        if (file.bytes != null) {
+          final filePath = '$basePath/file/${DateTime.now().millisecondsSinceEpoch}_${file.name}';
+          final fileRef = storageRef.child(filePath);
+          await fileRef.putData(file.bytes!);
+          final fileUrl = await fileRef.getDownloadURL();
+          uploadedFileUrls.add(fileUrl);
+        }
+      }
+
+      // action_list의 reference_file_count 업데이트
+      final actionListQuery = await FirebaseFirestore.instance
+          .collection('action_list')
+          .where('action_name', isEqualTo: widget.event.actionName)
+          .get();
+
+      if (actionListQuery.docs.isNotEmpty) {
+        await actionListQuery.docs.first.reference.update({
+          'reference_file_count': uploadedFileUrls.length,
+        });
+      }
+
+    } catch (e) {
+      print('파일 업로드 오류: $e');
+      throw Exception('파일 업로드 실패: $e');
+    }
+    
+    return uploadedFileUrls;
+  }
+
+  // 저장 가능 여부 확인
+  bool _canSave() {
+    // 기본적으로 저장 가능하도록 설정
+    bool canSave = true;
+
+    // 상태별 유효성 검사
+    switch (selectedStatus) {
+      case 'extended':
+        canSave = selectedHours != null;
+        break;
+      case 'transferred':
+        canSave = transferEmail != null && 
+                  isValidEmail && 
+                  selectedTransferTime != null;
+        break;
+      case 'delayed':
+        canSave = selectedStartTime != null;
+        break;
+      case 'dropped':
+        // dropped 상태는 추가 조건 없이 저장 가능
+        break;
+      case 'completed':
+      case 'pending':
+        // completed와 pending 상태는 추가 조건 없이 저장 가능
+        break;
+      default:
+        // 상태가 선택되지 않은 경우 저장 불가
+        canSave = selectedStatus != null;
+    }
+
+    return canSave;
   }
 
   @override
@@ -1817,14 +1955,18 @@ class _ChangedActionEventWidgetState extends State<ChangedActionEventWidget> {
                     ),
                     ElevatedButton(
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.blue,
+                        backgroundColor: _canSave() ? Colors.blue : Colors.grey,
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(8),
                         ),
                         padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                       ),
-                      onPressed: _canSave() ? _handleSave : null,
-                      child: Text('저장'),
+                      onPressed: _canSave() ? () => _handleSave() : null,
+                      child: Text('저장', 
+                        style: TextStyle(
+                          color: _canSave() ? Colors.white : Colors.grey[300],
+                        ),
+                      ),
                     ),
                   ],
                 ),
@@ -1834,14 +1976,6 @@ class _ChangedActionEventWidgetState extends State<ChangedActionEventWidget> {
         );
       },
     );
-  }
-
-  // 저장 가능 여부 확인
-  bool _canSave() {
-    if (selectedStatus == 'extended' && selectedHours == null) {
-      return false;
-    }
-    return true;
   }
 }
 
