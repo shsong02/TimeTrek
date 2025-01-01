@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import '../pages/actions/create_action.dart'; // CalendarConstants를 위한 import
+import 'package:firebase_auth/firebase_auth.dart';
 
 class GoalAddBottomSheet extends StatefulWidget {
   @override
@@ -339,14 +340,18 @@ class _GoalAddBottomSheetState extends State<GoalAddBottomSheet> {
     if (_formKey.currentState?.validate() ?? false) {
       _formKey.currentState?.save();
       try {
-        await FirebaseFirestore.instance.collection('goal_list').add({
-          'name': goalName,
-          'description': description,
-          'timegroup': selectedTimeGroup,
-          'order': 1,
-          'tag': tags,
-          'created_at': FieldValue.serverTimestamp(),
-        });
+        final currentUser = FirebaseAuth.instance.currentUser;
+        if (currentUser != null) {
+          await FirebaseFirestore.instance.collection('goal_list').add({
+            'name': goalName,
+            'description': description,
+            'timegroup': selectedTimeGroup,
+            'order': 1,
+            'tag': tags,
+            'created_at': FieldValue.serverTimestamp(),
+            'uid': currentUser.uid,
+          });
+        }
         if (mounted) {
           Navigator.pop(context, true);
         }

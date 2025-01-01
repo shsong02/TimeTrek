@@ -8,6 +8,7 @@ import '../../components/new_calendar_event.dart'; // 추가된 import
 import '../../components/time_info_card.dart';
 import 'package:flutter/material.dart';
 import '../../components/goal_add_bottom_sheet.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 // 캘린더 관련 상수를 관리하는 클래스
 class CalendarConstants {
@@ -86,24 +87,24 @@ class _CreateActionState extends State<CreateAction> {
 
   // 목표 데이터를 로드하고 정렬하는 메서드
   Future<void> _loadGoals() async {
-    // Firestore에서 goal_list 컬렉션의 모든 문서를 가져옴
-    final snapshot =
-        await FirebaseFirestore.instance.collection('goal_list').get();
+    final currentUser = FirebaseAuth.instance.currentUser;
+    if (currentUser == null) return;
 
-    // 각 문서를 GoalData 객체로 변환
+    // 현재 사용자의 goal만 조회하도록 수정
+    final snapshot = await FirebaseFirestore.instance
+        .collection('goal_list')
+        .where('uid', isEqualTo: currentUser.uid)
+        .get();
+
     final loadedGoals = await Future.wait(
         snapshot.docs.map((doc) => GoalData.fromDocument(doc)));
 
     if (mounted) {
       setState(() {
-        // timegroup으로 먼저 정렬하고, 같은 timegroup 내에서는 order로 정렬
         goals = loadedGoals
           ..sort((a, b) {
-            // timegroup 비교
             final timeGroupComparison = a.timegroup.compareTo(b.timegroup);
             if (timeGroupComparison != 0) return timeGroupComparison;
-
-            // 같은 timegroup 내에서 order 비교
             return a.order.compareTo(b.order);
           });
       });
@@ -1579,7 +1580,8 @@ class GoalData {
   final List<ActionData> actions;
   final int completedActions;
   final int totalActions;
-  final List<String> tags; // 태그 필드 추가
+  final List<String> tags;
+  final String uid;
 
   GoalData({
     required this.id,
@@ -1591,7 +1593,8 @@ class GoalData {
     this.actions = const [],
     this.completedActions = 0,
     this.totalActions = 0,
-    this.tags = const [], // 기본값 설정
+    this.tags = const [],
+    required this.uid,
   });
 
   static Future<GoalData> fromDocument(DocumentSnapshot doc) async {
@@ -1600,8 +1603,6 @@ class GoalData {
     final completedActions =
         actions.where((action) => action.action_status == 'completed').length;
     final totalActions = actions.length;
-
-    // 태그 데이터 변환
     final tagData = data['tag'] ?? [];
     final tags = (tagData as List).map((tag) => tag.toString()).toList();
 
@@ -1615,7 +1616,8 @@ class GoalData {
       actions: actions,
       completedActions: completedActions,
       totalActions: totalActions,
-      tags: tags, // 태그 추가
+      tags: tags,
+      uid: data['uid'] ?? '',
     );
   }
 
