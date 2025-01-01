@@ -17,6 +17,7 @@ import 'package:file_picker/file_picker.dart' show PlatformFile;
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'dart:typed_data'; // 추가
 import 'package:image/image.dart' as img; // 추가
+import 'package:image_picker/image_picker.dart';
 
 import '/backend/backend.dart';
 import '/components/new_calendar_event.dart';
@@ -782,8 +783,8 @@ class _ChangedActionEventWidgetState extends State<ChangedActionEventWidget> {
               if (image != null) {
                 // 이미지 선택 시 바로 리사이즈 및 인코딩 수행
                 final imageBytes = await image.readAsBytes();
-                final resizedImageBytes = await _resizeImage(imageBytes);
-                _encodedImage = base64Encode(resizedImageBytes);
+                // final resizedImageBytes = await _resizeImage(imageBytes);
+                _encodedImage = base64Encode(imageBytes);
 
                 setState(() {
                   selectedImages.clear();
@@ -1275,6 +1276,10 @@ class _ChangedActionEventWidgetState extends State<ChangedActionEventWidget> {
   // 저장 로직 수정
   Future<void> _handleSave() async {
     try {
+      // 이미지 업로드 먼저 수행
+      List<String> uploadedImageUrls = await _uploadImages();
+      
+      // 상태별 처리
       if (selectedStatus == 'extended') {
         if (selectedHours == null) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -1284,9 +1289,7 @@ class _ChangedActionEventWidgetState extends State<ChangedActionEventWidget> {
         }
         rescheduleCalendar = true;
         await _handleExtended();
-      }
-      // transferred 상태 처리를 먼저 수행
-      else if (selectedStatus == 'transferred') {
+      } else if (selectedStatus == 'transferred') {
         if (!isValidEmail || selectedTransferTime == null) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(content: Text('이메일과 시간을 모두 올바르게 입력해주세요')),
@@ -1313,17 +1316,11 @@ class _ChangedActionEventWidgetState extends State<ChangedActionEventWidget> {
             'transfer_time': selectedTransferTime,
           });
         }
-      }
-      // pending 상태 처리 추가
-      else if (selectedStatus == 'pending') {
+      } else if (selectedStatus == 'pending') {
         await _handlePending();
-      }
-      // dropped 상태 처리
-      else if (selectedStatus == 'dropped') {
+      } else if (selectedStatus == 'dropped') {
         await _handleDrop();
-      }
-      // completed 상태 처리
-      else if (selectedStatus == 'completed') {
+      } else if (selectedStatus == 'completed') {
         await _handleCompleted();
       }
 
@@ -1756,6 +1753,21 @@ class _ChangedActionEventWidgetState extends State<ChangedActionEventWidget> {
       return value.map((val) => convertTimestampFields(val)).toList();
     }
     return value;
+  }
+
+  Future<List<String>> _uploadImages() async {
+    List<String> uploadedImageUrls = [];
+    
+    for (var image in selectedImages) {
+      final imageBytes = await image.readAsBytes();
+      final imagePath = 'action_images/${DateTime.now().millisecondsSinceEpoch}_${image.name}';
+      final imageRef = FirebaseStorage.instance.ref().child(imagePath);
+      await imageRef.putData(imageBytes);
+      final imageUrl = await imageRef.getDownloadURL();
+      uploadedImageUrls.add(imageUrl);
+    }
+    
+    return uploadedImageUrls;
   }
 
   @override
