@@ -40,6 +40,9 @@ class _ActionCalendarState extends State<ActionCalendar> {
   late CalendarController _controller;
   StreamController<void>? _refreshController;
   late Future<void> _initialDataFuture;
+  int _rotationAngle = 0;
+  late TextEditingController _descriptionController;
+  String markdownText = '';
 
   @override
   void initState() {
@@ -47,6 +50,7 @@ class _ActionCalendarState extends State<ActionCalendar> {
     _controller = CalendarController();
     _controller.view = CalendarView.schedule;
     _initialDataFuture = _loadInitialData();
+    _descriptionController = TextEditingController(text: markdownText);
 
     // 지연된 초기화를 위해 WidgetsBinding 사용
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -102,6 +106,7 @@ class _ActionCalendarState extends State<ActionCalendar> {
     _controller.removePropertyChangedListener(_handleViewChanged);
     _controller.dispose();
     _refreshController?.close();
+    _descriptionController.dispose();
     super.dispose();
   }
 
@@ -309,6 +314,7 @@ class ChangedActionEventWidget extends StatefulWidget {
 }
 class _ChangedActionEventWidgetState extends State<ChangedActionEventWidget> {
   late Future<Map<String, dynamic>> _initialDataFuture;
+  late TextEditingController _descriptionController;
   Map<String, dynamic>? _cachedData;
   List<DateTime>? _cachedTimeSlots;
 
@@ -321,10 +327,13 @@ class _ChangedActionEventWidgetState extends State<ChangedActionEventWidget> {
 
   bool _isAnalyzing = false; // _isAnalyzing 변수 추가
 
+  String? _encodedImage; // base64 인코딩된 이미지를 저장할 변수 추가
+
   @override
   void initState() {
     super.initState();
     _initialDataFuture = _loadInitialData();
+    _descriptionController = TextEditingController(text: markdownText);
     selectedStatus = widget.event.actionStatus;
     selectedReminderMinutes = widget.event.reminderMinutes ?? 30;
     markdownText = widget.event.actionStatusDescription ?? '';
@@ -576,6 +585,7 @@ class _ChangedActionEventWidgetState extends State<ChangedActionEventWidget> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         TextField(
+          controller: _descriptionController,
           maxLines: 5,
           decoration: InputDecoration(
             labelText: '상태 설명',
@@ -598,7 +608,7 @@ class _ChangedActionEventWidgetState extends State<ChangedActionEventWidget> {
           SizedBox(height: 8),
           Container(
             width: double.infinity,
-            height: 200, // 고정 높이 설정
+            height: 200,
             padding: EdgeInsets.all(16),
             decoration: BoxDecoration(
               border: Border.all(color: Colors.grey.shade300),
@@ -609,9 +619,7 @@ class _ChangedActionEventWidgetState extends State<ChangedActionEventWidget> {
               child: SizedBox(
                 width: double.infinity,
                 child: MarkdownBody(
-                  // MarkdownWidget 대신 MarkdownBody 사용
                   data: markdownText,
-                  selectable: true,
                   styleSheet: MarkdownStyleSheet(
                     p: TextStyle(fontSize: 14),
                     code: TextStyle(
@@ -768,18 +776,20 @@ class _ChangedActionEventWidgetState extends State<ChangedActionEventWidget> {
           trailing: IconButton(
             icon: Icon(Icons.add_photo_alternate),
             onPressed: () async {
-              // 이미지 선택 로직
               final ImagePicker picker = ImagePicker();
               final XFile? image = await picker.pickImage(source: ImageSource.gallery);
 
               if (image != null) {
+                // 이미지 선택 시 바로 리사이즈 및 인코딩 수행
+                final imageBytes = await image.readAsBytes();
+                final resizedImageBytes = await _resizeImage(imageBytes);
+                _encodedImage = base64Encode(resizedImageBytes);
+
                 setState(() {
-                  // 기존 이미지 삭제
                   selectedImages.clear();
                   imageUrls.clear();
-                  // 새로운 이미지 추가
                   selectedImages.add(image);
-                  selectedImagePurpose = null; // 목적 초기화
+                  selectedImagePurpose = null;
                 });
               }
             },
@@ -790,18 +800,17 @@ class _ChangedActionEventWidgetState extends State<ChangedActionEventWidget> {
             children: [
               Row(
                 children: [
-                  // 이미지 프리뷰를 더 크게 하고 드래그 가능하도록 설정
                   Expanded(
                     child: InteractiveViewer(
-                      panEnabled: true, // 드래그 가능
+                      panEnabled: true,
                       boundaryMargin: EdgeInsets.all(20),
                       minScale: 0.5,
                       maxScale: 2.0,
                       child: Transform.rotate(
                         angle: _rotationAngle * (3.141592653589793 / 180),
                         child: Container(
-                          width: 200, // 고정 너비
-                          height: 200, // 고정 높이
+                          width: 200,
+                          height: 200,
                           child: Image.network(
                             selectedImages.first.path,
                             fit: BoxFit.contain,
@@ -816,9 +825,18 @@ class _ChangedActionEventWidgetState extends State<ChangedActionEventWidget> {
                       ElevatedButton(
                         onPressed: _rotateImage,
                         child: Text('이미지 회전'),
+                        style: ElevatedButton.styleFrom(
+                          minimumSize: Size(120, 36),
+                        ),
                       ),
-                      Divider(),
+                      SizedBox(height: 16),
+                      Divider(height: 1, thickness: 1),
+                      SizedBox(height: 16),
                       ToggleButtons(
+                        constraints: BoxConstraints.expand(
+                          width: 60,
+                          height: 36,
+                        ),
                         borderColor: Colors.grey,
                         selectedBorderColor: Colors.blue,
                         fillColor: Colors.blue.withOpacity(0.1),
@@ -843,7 +861,7 @@ class _ChangedActionEventWidgetState extends State<ChangedActionEventWidget> {
                           });
                         },
                       ),
-                      SizedBox(height: 8),
+                      SizedBox(height: 16),
                       if (selectedImagePurpose == 'purpose2')
                         ElevatedButton(
                           style: ElevatedButton.styleFrom(
@@ -851,11 +869,32 @@ class _ChangedActionEventWidgetState extends State<ChangedActionEventWidget> {
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(8),
                             ),
-                            padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                            minimumSize: Size(120, 36),
                           ),
-                          onPressed: _isAnalyzing ? null : _analyzeImage,
+                          onPressed: _isAnalyzing ? null : () async {
+                            setState(() {
+                              _isAnalyzing = true;
+                            });
+                            
+                            try {
+                              await _analyzeImage();
+                            } finally {
+                              if (mounted) {
+                                setState(() {
+                                  _isAnalyzing = false;
+                                });
+                              }
+                            }
+                          },
                           child: _isAnalyzing
-                              ? CircularProgressIndicator(color: Colors.white)
+                              ? SizedBox(
+                                  width: 20,
+                                  height: 20,
+                                  child: CircularProgressIndicator(
+                                    color: Colors.white,
+                                    strokeWidth: 2,
+                                  ),
+                                )
                               : Text('AI 분석', style: TextStyle(fontSize: 14)),
                         ),
                     ],
@@ -875,51 +914,49 @@ class _ChangedActionEventWidgetState extends State<ChangedActionEventWidget> {
     });
 
     try {
-      final image = selectedImages.first;
-      final imageBytes = await image.readAsBytes();
-      final resizedImageBytes = await _resizeImage(imageBytes);
-
-      // Timestamp를 ISO 문자열로 변환하는 헬퍼 함수
-      dynamic convertTimestampFields(dynamic value) {
-        if (value is Timestamp) {
-          return value.toDate().toIso8601String();
-        } else if (value is Map) {
-          return value.map((key, val) => MapEntry(key, convertTimestampFields(val)));
-        } else if (value is List) {
-          return value.map((val) => convertTimestampFields(val)).toList();
-        }
-        return value;
+      if (_encodedImage == null) {
+        throw Exception('인코딩된 이미지가 없습니다.');
       }
-
-      // 전체 데이터의 깊은 복사본 생성 및 Timestamp 변환
-      final actionList = (_cachedData?['action_list'] as List).map((item) {
-        return convertTimestampFields(item);
-      }).toList();
-
-      final actionHistories = (_cachedData?['action_histories'] as List).map((item) {
-        return convertTimestampFields(item);
-      }).toList();
 
       final requestBody = {
         'goal_name': widget.event.goalName,
         'action_name': widget.event.actionName,
         'action_target_time': widget.event.startTime?.toIso8601String(),
-        'related_action_list': actionList,
+        'related_action_list': (_cachedData?['action_list'] as List)
+            .map((item) => convertTimestampFields(item))
+            .toList(),
         'send_email': transferEmail,
-        'action_history': actionHistories,
-        'image': base64Encode(resizedImageBytes),
+        'action_history': (_cachedData?['action_histories'] as List)
+            .map((item) => convertTimestampFields(item))
+            .toList(),
+        'image': _encodedImage,
       };
 
       final response = await http.post(
-        Uri.parse('https://shsong83.app.n8n.cloud/webhook-test/timetrek-image-to-text'),
+        Uri.parse('https://shsong83.app.n8n.cloud/webhook/timetrek-image-to-text'),
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode(requestBody),
       );
 
       if (response.statusCode == 200) {
         final responseData = jsonDecode(response.body);
+        String content = responseData['content'] as String? ?? '';
+        
+        // 코드 블록 마커 제거
+        content = content.replaceAll('```markdown\n', '')
+                        .replaceAll('\n```', '');
+        
+        // 기존 텍스트에 새로운 내용 추가
+        final newText = _descriptionController.text.isEmpty 
+            ? content 
+            : '${_descriptionController.text}\n\n$content';
+        
         setState(() {
-          markdownText = responseData['markdown'] ?? '';
+          markdownText = newText;
+          _descriptionController.text = newText;
+          _descriptionController.selection = TextSelection.fromPosition(
+            TextPosition(offset: newText.length),
+          );
         });
       } else {
         throw Exception('이미지 분석 실패: ${response.statusCode}');
@@ -1222,8 +1259,8 @@ class _ChangedActionEventWidgetState extends State<ChangedActionEventWidget> {
       final now = DateTime.now();
       final availableSlots = expandedTimeSlots
           .where((time) => time.isAfter(now))
-          .toList()
-        ..sort((a, b) => a.compareTo(b));
+              .toList()
+            ..sort((a, b) => a.compareTo(b));
 
       // print('사용 가능한 시간대 수: ${availableSlots.length}개');
       // print('=== _getAvailableTimeSlots 종료 ===');
@@ -1707,6 +1744,18 @@ class _ChangedActionEventWidgetState extends State<ChangedActionEventWidget> {
       }
     }
     print('=== _handleTransferred 종료 ===\n');
+  }
+
+  // Timestamp 변환 헬퍼 함수 추가
+  dynamic convertTimestampFields(dynamic value) {
+    if (value is Timestamp) {
+      return value.toDate().toIso8601String();
+    } else if (value is Map) {
+      return value.map((key, val) => MapEntry(key, convertTimestampFields(val)));
+    } else if (value is List) {
+      return value.map((val) => convertTimestampFields(val)).toList();
+    }
+    return value;
   }
 
   @override
