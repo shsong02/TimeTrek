@@ -203,15 +203,30 @@ Future<List<Map<String, dynamic>>> calculateAvailableTimeSlots({
     // 시작 시간을 현재 시간으로 설정
     startTime = DateTime.now();
 
-    // 종료 시간을 현재 달의 마지막 날 23:59:59로 설정
-    endTime = DateTime(
-      startTime.year,
-      startTime.month + 1,
-      0,
-      23,
-      59,
-      59,
-    );
+    // 종료 시간을 계산할 때 년도 변경을 고려
+    DateTime lastDayOfMonth;
+    if (startTime.month == 12) {
+      // 12월인 경우 다음 해 1월로 넘어가도록 처리
+      lastDayOfMonth = DateTime(
+        startTime.year + 1,
+        1,
+        0,
+        23,
+        59,
+        59,
+      );
+    } else {
+      // 그 외의 경우 현재 년도에서 다음 달로
+      lastDayOfMonth = DateTime(
+        startTime.year,
+        startTime.month + 1,
+        0,
+        23,
+        59,
+        59,
+      );
+    }
+    endTime = lastDayOfMonth;
 
     // 시간 계산을 위한 변수 초기화
     double totalOriginalTime = 0.0;

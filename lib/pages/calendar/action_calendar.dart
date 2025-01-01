@@ -15,6 +15,8 @@ import 'package:image_picker/image_picker.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:file_picker/file_picker.dart' show PlatformFile;
 import 'package:flutter_markdown/flutter_markdown.dart';
+import 'dart:typed_data'; // 추가
+import 'package:image/image.dart' as img; // 추가
 
 import '/backend/backend.dart';
 import '/components/new_calendar_event.dart';
@@ -38,7 +40,6 @@ class _ActionCalendarState extends State<ActionCalendar> {
   late CalendarController _controller;
   StreamController<void>? _refreshController;
   late Future<void> _initialDataFuture;
-  // late Future<Map<String, dynamic>> _initialDataFuture;
 
   @override
   void initState() {
@@ -317,6 +318,8 @@ class _ChangedActionEventWidgetState extends State<ChangedActionEventWidget> {
   // 이미지 업로드 관련 변수
   List<XFile> selectedImages = [];
   List<String> imageUrls = [];
+
+  bool _isAnalyzing = false; // _isAnalyzing 변수 추가
 
   @override
   void initState() {
@@ -726,6 +729,31 @@ class _ChangedActionEventWidgetState extends State<ChangedActionEventWidget> {
     );
   }
 
+  // 이미지 회전 기능 추가
+  int _rotationAngle = 0;  // 추가
+  void _rotateImage() {
+    setState(() {
+      _rotationAngle = (_rotationAngle + 90) % 360;
+    });
+  }
+
+  // 이미지 리사이즈 함수
+  Future<Uint8List> _resizeImage(Uint8List imageData) async {
+    final image = img.decodeImage(imageData);
+    if (image == null) return imageData;
+
+    // 이미지 크기를 1MB 이하로 조정
+    int quality = 100;
+    Uint8List resizedImageData;
+    do {
+      resizedImageData = Uint8List.fromList(img.encodeJpg(image, quality: quality));
+      quality -= 10;
+    } while (resizedImageData.lengthInBytes > 1024 * 1024 && quality > 0);
+
+    return resizedImageData;
+  }
+
+
   // ActionEventUploadImage 위젯
   Widget _buildActionEventUploadImage() {
     return Column(
@@ -769,12 +797,15 @@ class _ChangedActionEventWidgetState extends State<ChangedActionEventWidget> {
                       boundaryMargin: EdgeInsets.all(20),
                       minScale: 0.5,
                       maxScale: 2.0,
-                      child: Container(
-                        width: 200, // 고정 너비
-                        height: 200, // 고정 높이
-                        child: Image.network(
-                          selectedImages.first.path,
-                          fit: BoxFit.contain,
+                      child: Transform.rotate(
+                        angle: _rotationAngle * (3.141592653589793 / 180),
+                        child: Container(
+                          width: 200, // 고정 너비
+                          height: 200, // 고정 높이
+                          child: Image.network(
+                            selectedImages.first.path,
+                            fit: BoxFit.contain,
+                          ),
                         ),
                       ),
                     ),
@@ -782,6 +813,11 @@ class _ChangedActionEventWidgetState extends State<ChangedActionEventWidget> {
                   SizedBox(width: 16),
                   Column(
                     children: [
+                      ElevatedButton(
+                        onPressed: _rotateImage,
+                        child: Text('이미지 회전'),
+                      ),
+                      Divider(),
                       ToggleButtons(
                         borderColor: Colors.grey,
                         selectedBorderColor: Colors.blue,
@@ -798,7 +834,7 @@ class _ChangedActionEventWidgetState extends State<ChangedActionEventWidget> {
                           ),
                         ],
                         isSelected: [
-                          selectedImagePurpose == 'purpose1', // 초기 선택 상태 설정
+                          selectedImagePurpose == 'purpose1',
                           selectedImagePurpose == 'purpose2'
                         ],
                         onPressed: (index) {
@@ -807,7 +843,7 @@ class _ChangedActionEventWidgetState extends State<ChangedActionEventWidget> {
                           });
                         },
                       ),
-                      SizedBox(height: 16),
+                      SizedBox(height: 8),
                       if (selectedImagePurpose == 'purpose2')
                         ElevatedButton(
                           style: ElevatedButton.styleFrom(
@@ -817,8 +853,10 @@ class _ChangedActionEventWidgetState extends State<ChangedActionEventWidget> {
                             ),
                             padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                           ),
-                          onPressed: _analyzeImage,
-                          child: Text('Analyze', style: TextStyle(fontSize: 14)),
+                          onPressed: _isAnalyzing ? null : _analyzeImage,
+                          child: _isAnalyzing
+                              ? CircularProgressIndicator(color: Colors.white)
+                              : Text('AI 분석', style: TextStyle(fontSize: 14)),
                         ),
                     ],
                   ),
@@ -832,9 +870,14 @@ class _ChangedActionEventWidgetState extends State<ChangedActionEventWidget> {
 
   // 이미지 분석을 위한 API 호출 메서드
   Future<void> _analyzeImage() async {
+    setState(() {
+      _isAnalyzing = true;
+    });
+
     try {
-      final image = selectedImages.first; // 첫 번째 이미지를 사용
+      final image = selectedImages.first;
       final imageBytes = await image.readAsBytes();
+      final resizedImageBytes = await _resizeImage(imageBytes);
 
       // Timestamp를 ISO 문자열로 변환하는 헬퍼 함수
       dynamic convertTimestampFields(dynamic value) {
@@ -864,7 +907,7 @@ class _ChangedActionEventWidgetState extends State<ChangedActionEventWidget> {
         'related_action_list': actionList,
         'send_email': transferEmail,
         'action_history': actionHistories,
-        'image': base64Encode(imageBytes), // 이미지 바이너리 파일을 Base64로 인코딩
+        'image': base64Encode(resizedImageBytes),
       };
 
       final response = await http.post(
@@ -886,6 +929,10 @@ class _ChangedActionEventWidgetState extends State<ChangedActionEventWidget> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('이미지 분석 중 오류가 발생했습니다: $e')),
       );
+    } finally {
+      setState(() {
+        _isAnalyzing = false;
+      });
     }
   }
 
@@ -961,7 +1008,6 @@ class _ChangedActionEventWidgetState extends State<ChangedActionEventWidget> {
       ],
     );
   }
-
   // delayed 시간 선택 위젯
   Widget _buildDelayedTimeSelect() {
     return Column(
@@ -1737,3 +1783,4 @@ class _ChangedActionEventWidgetState extends State<ChangedActionEventWidget> {
     return true;
   }
 }
+
