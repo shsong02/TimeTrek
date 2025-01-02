@@ -9,6 +9,9 @@ import '../../components/time_info_card.dart';
 import 'package:flutter/material.dart';
 import '../../components/goal_add_bottom_sheet.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_storage/firebase_storage.dart';
+import 'package:provider/provider.dart';
+import '../../backend/app_state.dart';
 
 // 캘린더 관련 상수를 관리하는 클래스
 class CalendarConstants {
@@ -72,14 +75,9 @@ class _CreateActionState extends State<CreateAction> {
       ]);
 
       // 타임슬롯 계산 추가
-      final timeslotDocs = await calculateAvailableTimeSlots();
-      print('초기 로드된 타임슬롯 수: ${timeslotDocs.length}');
+      // final timeslotDocs = await calculateAvailableTimeSlots();
+      // print('초기 로드된 타임슬롯 수: ${timeslotDocs.length}');
 
-      // 이벤트가 포함된 타임슬롯 확인을 위한 디버그 출력
-      // for (var slot in timeslotDocs) {
-      //   print(
-      //       '타임슬롯: ${slot['startTime']} ~ ${slot['endTime']} (${slot['subject']})');
-      // }
     } catch (e) {
       print('Error in _loadData: $e');
     }
@@ -436,6 +434,8 @@ class _CreateActionState extends State<CreateAction> {
                                           'order': actionData['order'] ?? 1,
                                           'created_at':
                                               FieldValue.serverTimestamp(),
+                                          'reference_image_count': 0,
+                                          'reference_file_count': 0,
                                         });
                                       }
 
@@ -1118,6 +1118,52 @@ class _GoalCardState extends State<GoalCard> {
 
   Future<void> _deleteGoalAndActions(GoalData goal) async {
     try {
+      // action_list에서 관련 Actions 삭제 전에 reference count 확인
+      final actionsSnapshot = await FirebaseFirestore.instance
+          .collection('action_list')
+          .where('goal_name', isEqualTo: goal.name)
+          .get();
+
+      // Google Storage 파일 삭제 처리
+      for (var actionDoc in actionsSnapshot.docs) {
+        final actionData = actionDoc.data();
+        final imageCount = actionData['reference_image_count'] ?? 0;
+        final fileCount = actionData['reference_file_count'] ?? 0;
+
+        if (imageCount > 0 || fileCount > 0) {
+          final uid = Provider.of<AppState>(context, listen: false).currentUser?.uid;
+          if (uid != null) {
+            final safeGoalName = goal.name.replaceAll(RegExp(r'[^a-zA-Z0-9가-힣]'), '_');
+            final safeActionName = actionData['action_name']?.replaceAll(RegExp(r'[^a-zA-Z0-9가-힣]'), '_') ?? 'unknown';
+            final basePath = 'users/$uid/$safeGoalName/$safeActionName';
+            
+            try {
+              // 해당 action 폴더의 모든 내용 삭제
+              final storageRef = FirebaseStorage.instance.ref().child(basePath);
+              final result = await storageRef.listAll();
+              
+              // 모든 하위 항목 삭제
+              for (var prefix in result.prefixes) {
+                final subResult = await prefix.listAll();
+                for (var item in subResult.items) {
+                  await item.delete();
+                }
+              }
+              for (var item in result.items) {
+                await item.delete();
+              }
+              
+              print('Google Storage 파일 삭제 완료: $basePath');
+            } catch (e) {
+              print('Google Storage 파일 삭제 중 오류: $e');
+            }
+          }
+        }
+        
+        // action_list에서 문서 삭제
+        await actionDoc.reference.delete();
+      }
+
       // goal_list에서 Goal 삭제
       await FirebaseFirestore.instance
           .collection('goal_list')
@@ -1125,18 +1171,9 @@ class _GoalCardState extends State<GoalCard> {
           .delete();
       print('Goal ${goal.id} deleted successfully.');
 
-      // action_list에서 관련 Actions 삭
-      final actionsSnapshot = await FirebaseFirestore.instance
-          .collection('action_list')
-          .where('goal_name', isEqualTo: goal.name)
-          .get();
-
-      for (var doc in actionsSnapshot.docs) {
-        await doc.reference.delete();
-        print('Action ${doc.id} deleted successfully.');
-      }
     } catch (e) {
       print('Error deleting goal and actions: $e');
+      throw e;
     }
   }
 
@@ -1510,14 +1547,56 @@ class _ActionCardState extends State<ActionCard> {
   // 액션을 삭제하는 메서드
   Future<void> _deleteAction() async {
     try {
+      // 액션 데이터 가져오기
+      final actionDoc = await FirebaseFirestore.instance
+          .collection('action_list')
+          .doc(widget.action.id)
+          .get();
+      
+      final actionData = actionDoc.data();
+      if (actionData != null) {
+        final imageCount = actionData['reference_image_count'] ?? 0;
+        final fileCount = actionData['reference_file_count'] ?? 0;
+
+        // Storage 파일 삭제 처리
+        if (imageCount > 0 || fileCount > 0) {
+          final uid = Provider.of<AppState>(context, listen: false).currentUser?.uid;
+          if (uid != null) {
+            final safeGoalName = widget.action.goal_name.replaceAll(RegExp(r'[^a-zA-Z0-9가-힣]'), '_');
+            final safeActionName = widget.action.action_name.replaceAll(RegExp(r'[^a-zA-Z0-9가-힣]'), '_');
+            final basePath = 'users/$uid/$safeGoalName/$safeActionName';
+            
+            try {
+              // 해당 action 폴더의 모든 내용 삭제
+              final storageRef = FirebaseStorage.instance.ref().child(basePath);
+              final result = await storageRef.listAll();
+              
+              // 모든 하위 항목 삭제
+              for (var prefix in result.prefixes) {
+                final subResult = await prefix.listAll();
+                for (var item in subResult.items) {
+                  await item.delete();
+                }
+              }
+              for (var item in result.items) {
+                await item.delete();
+              }
+              print('Google Storage 파일 삭제 완료: $basePath');
+            } catch (e) {
+              print('Google Storage 파일 삭제 중 오류: $e');
+            }
+          }
+        }
+      }
+
+      // Firestore에서 액션 문서 삭제
       await FirebaseFirestore.instance
           .collection('action_list')
           .doc(widget.action.id)
           .delete();
 
-      // 상위 위젯의 상태를 갱신하기 위해 CreateActionState를 찾아서 데이터를 다시 로드
-      final createActionState =
-          context.findAncestorStateOfType<_CreateActionState>();
+      // 상위 위젯의 상태를 갱신
+      final createActionState = context.findAncestorStateOfType<_CreateActionState>();
       if (createActionState != null && createActionState.mounted) {
         await createActionState._loadData();
       }
@@ -1648,6 +1727,8 @@ class ActionData {
   final int order;
   final String goal_name;
   final double action_execution_time;
+  final int reference_image_count;
+  final int reference_file_count;
 
   ActionData({
     required this.id,
@@ -1657,6 +1738,8 @@ class ActionData {
     required this.order,
     required this.goal_name,
     required this.action_execution_time,
+    this.reference_image_count = 0,
+    this.reference_file_count = 0,
   });
 
   factory ActionData.fromDocument(DocumentSnapshot doc) {
@@ -1671,6 +1754,8 @@ class ActionData {
       action_execution_time: (data['action_execution_time'] is int)
           ? (data['action_execution_time'] as int).toDouble()
           : (data['action_execution_time'] as double?) ?? 0.0,
+      reference_image_count: data['reference_image_count'] ?? 0,
+      reference_file_count: data['reference_file_count'] ?? 0,
     );
   }
 }
@@ -1766,8 +1851,8 @@ Future<List<Map<String, dynamic>>> calculateAvailableTimeSlots({
         .where('startTime', isLessThanOrEqualTo: Timestamp.fromDate(endTime))
         .get();
 
-    print('\n=== 이벤트 처리 시작 ===');
-    print('처리할 이벤트 수: ${eventSnapshot.docs.length}');
+    // print('\n=== 이벤트 처리 시작 ===');
+    // print('처리할 이벤트 수: ${eventSnapshot.docs.length}');
 
     for (var doc in eventSnapshot.docs) {
       final eventData = doc.data();
@@ -1777,12 +1862,12 @@ Future<List<Map<String, dynamic>>> calculateAvailableTimeSlots({
       final eventDuration = eventEnd.difference(eventStart).inMinutes / 60;
       final subject = eventData['subject'] as String?;
 
-      print('\n이벤트 처리:');
-      print('타입: $type');
-      print('시작: $eventStart');
-      print('종료: $eventEnd');
-      print('과목: $subject');
-      print('시간: ${eventDuration.toStringAsFixed(1)}H');
+      // print('\n이벤트 처리:');
+      // print('타입: $type');
+      // print('시작: $eventStart');
+      // print('종료: $eventEnd');
+      // print('과목: $subject');
+      // print('시간: ${eventDuration.toStringAsFixed(1)}H');
       if (type == 'add') {
         timeslotDocs.add({
           'startTime': eventStart.toIso8601String(),
@@ -1836,13 +1921,13 @@ Future<List<Map<String, dynamic>>> calculateAvailableTimeSlots({
     }
 
     final remainingTotalTime = totalOriginalTime + totalEventTime;
-    print('\n=== 타임슬롯 계산 결과 ===');
-    print('기본 타임슬롯 총 시간: ${totalOriginalTime.toStringAsFixed(1)}H');
-    print('이벤트로 인한 시간 변동: ${totalEventTime.toStringAsFixed(1)}H');
-    print('최종 가용 시간: ${remainingTotalTime.toStringAsFixed(1)}H');
-    print('최종 타임슬롯 개수: ${timeslotDocs.length}개\n');
+    // print('\n=== 타임슬롯 계산 결과 ===');
+    // print('기본 타임슬롯 총 시간: ${totalOriginalTime.toStringAsFixed(1)}H');
+    // print('이벤트로 인한 시간 변동: ${totalEventTime.toStringAsFixed(1)}H');
+    // print('최종 가용 시간: ${remainingTotalTime.toStringAsFixed(1)}H');
+    // print('최종 타임슬롯 개수: ${timeslotDocs.length}개\n');
 
-    print('=== Subject별 시간 분포 ===');
+    // print('=== Subject별 시간 분포 ===');
     timeBySubject.forEach((subject, time) {
       print(
           '$subject: ${time.toStringAsFixed(1)}H (${(time / remainingTotalTime * 100).toStringAsFixed(1)}%)');

@@ -314,6 +314,8 @@ class ChangedActionEventWidget extends StatefulWidget {
       _ChangedActionEventWidgetState();
 }
 class _ChangedActionEventWidgetState extends State<ChangedActionEventWidget> {
+  String? _fileUploadError;  // 추가
+  String? _imageUploadError;  // 추가: 이미지 업로드 에러 메시지를 위한 변수
   late Future<Map<String, dynamic>> _initialDataFuture;
   late TextEditingController _descriptionController;
   Map<String, dynamic>? _cachedData;
@@ -332,6 +334,9 @@ class _ChangedActionEventWidgetState extends State<ChangedActionEventWidget> {
 
   // 저장 중 상태를 관리할 변수 추가
   bool _isSaving = false;
+
+  String imagePathsForHistory = '';
+  String filePathsForHistory = '';
 
   @override
   void initState() {
@@ -780,13 +785,39 @@ class _ChangedActionEventWidgetState extends State<ChangedActionEventWidget> {
           trailing: IconButton(
             icon: Icon(Icons.add_photo_alternate),
             onPressed: () async {
+              // action_list 콜렉션에서 현재 이미지 개수 확인
+              final actionListQuery = await FirebaseFirestore.instance
+                  .collection('action_list')
+                  .where('action_name', isEqualTo: widget.event.actionName)
+                  .get();
+
+              if (actionListQuery.docs.isEmpty) return;
+
+              final currentCount =
+                  actionListQuery.docs.first.data()['reference_image_count'] ?? 0;
+
+              if (currentCount >= AppState.actionMaxImageCount) {
+                setState(() {
+                  _imageUploadError = '이미지 업로드 제한 횟수를 초과했습니다.';
+                });
+                return;
+              }
+
               final ImagePicker picker = ImagePicker();
               final XFile? image = await picker.pickImage(source: ImageSource.gallery);
 
               if (image != null) {
-                // 이미지 선택 시 바로 리사이즈 및 인코딩 수행
+                // 이미지 크기 확인
                 final imageBytes = await image.readAsBytes();
-                // final resizedImageBytes = await _resizeImage(imageBytes);
+                final imageSizeInMB = imageBytes.length / (1024 * 1024);
+
+                if (imageSizeInMB > AppState.actionLimitImageMBSize) {
+                  setState(() {
+                    _imageUploadError = '이미지 크기가 제한을 초과했습니다.';
+                  });
+                  return;
+                }
+
                 _encodedImage = base64Encode(imageBytes);
 
                 setState(() {
@@ -794,11 +825,23 @@ class _ChangedActionEventWidgetState extends State<ChangedActionEventWidget> {
                   imageUrls.clear();
                   selectedImages.add(image);
                   selectedImagePurpose = null;
+                  _imageUploadError = null; // 성공 시 에러 메시지 제거
                 });
               }
             },
           ),
         ),
+        if (_imageUploadError != null)
+          Padding(
+            padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            child: Text(
+              _imageUploadError!,
+              style: TextStyle(
+                color: Colors.red,
+                fontSize: 12,
+              ),
+            ),
+          ),
         if (selectedImages.isNotEmpty)
           Column(
             children: [
@@ -991,7 +1034,6 @@ class _ChangedActionEventWidgetState extends State<ChangedActionEventWidget> {
           trailing: IconButton(
             icon: Icon(Icons.add_box),
             onPressed: () async {
-              // action_list에서 reference_file_count 확인
               final actionListQuery = await FirebaseFirestore.instance
                   .collection('action_list')
                   .where('action_name', isEqualTo: widget.event.actionName)
@@ -1004,9 +1046,9 @@ class _ChangedActionEventWidgetState extends State<ChangedActionEventWidget> {
                       0;
 
               if (currentCount >= AppState.actionMaxFileCount) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text('파일 업로드 제한 횟수를 초과했습니다.')),
-                );
+                setState(() {
+                  _fileUploadError = '파일 업로드 제한 횟수를 초과했습니다.';
+                });
                 return;
               }
 
@@ -1017,19 +1059,31 @@ class _ChangedActionEventWidgetState extends State<ChangedActionEventWidget> {
                 final fileSizeInMB = file.size / (1024 * 1024);
 
                 if (fileSizeInMB > AppState.actionLimitFileMBSize) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('파일 크기가 제한을 초과했습니다.')),
-                  );
+                  setState(() {
+                    _fileUploadError = '파일 크기가 제한을 초과했습니다.';
+                  });
                   return;
                 }
 
                 setState(() {
                   selectedFiles.add(file);
+                  _fileUploadError = null; // 성공 시 에러 메시지 제거
                 });
               }
             },
           ),
         ),
+        if (_fileUploadError != null)
+          Padding(
+            padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            child: Text(
+              _fileUploadError!,
+              style: TextStyle(
+                color: Colors.red,
+                fontSize: 12,
+              ),
+            ),
+          ),
         if (selectedFiles.isNotEmpty)
           Column(
             children: selectedFiles.map((file) {
@@ -1418,7 +1472,54 @@ class _ChangedActionEventWidgetState extends State<ChangedActionEventWidget> {
   Future<void> _handleDrop() async {
     print('=== _handleDrop 시작 ===');
     try {
-      // 1. calendar_event에서 동일한 action_name을 가진 모든 이벤트 삭제
+      // 1. action_list에서 해당 액션 조회 및 reference count 확인
+      final actionListQuery = await FirebaseFirestore.instance
+          .collection('action_list')
+          .where('action_name', isEqualTo: widget.event.actionName)
+          .get();
+      print('action_list 콜렉션 조회 (action_name=${widget.event.actionName}): ${actionListQuery.docs.length}개의 문서 로드됨');
+
+      if (actionListQuery.docs.isNotEmpty) {
+        final actionDoc = actionListQuery.docs.first;
+        final imageCount = actionDoc.data()['reference_image_count'] ?? 0;
+        final fileCount = actionDoc.data()['reference_file_count'] ?? 0;
+
+        // 파일이나 이미지가 존재하면 Google Storage에서 삭제
+        if (imageCount > 0 || fileCount > 0) {
+          final uid = Provider.of<AppState>(context, listen: false).currentUser?.uid;
+          if (uid != null) {
+            final safeGoalName = widget.event.goalName?.replaceAll(RegExp(r'[^a-zA-Z0-9가-힣]'), '_') ?? 'unknown';
+            final safeActionName = widget.event.actionName?.replaceAll(RegExp(r'[^a-zA-Z0-9가-힣]'), '_') ?? 'unknown';
+            final basePath = 'users/$uid/$safeGoalName/$safeActionName';
+            
+            try {
+              // 해당 action 폴더의 모든 내용 삭제
+              final storageRef = FirebaseStorage.instance.ref().child(basePath);
+              final result = await storageRef.listAll();
+              
+              // 모든 하위 항목 삭제
+              for (var prefix in result.prefixes) {
+                final subResult = await prefix.listAll();
+                for (var item in subResult.items) {
+                  await item.delete();
+                }
+              }
+              for (var item in result.items) {
+                await item.delete();
+              }
+              
+              print('Google Storage 파일 삭제 완료: $basePath');
+            } catch (e) {
+              print('Google Storage 파일 삭제 중 오류: $e');
+            }
+          }
+        }
+
+        // action_list에서 문서 삭제
+        await actionDoc.reference.delete();
+      }
+
+      // 2. calendar_event에서 동일한 action_name을 가진 모든 이벤트 삭제
       final calendarEvents = await FirebaseFirestore.instance
           .collection('calendar_event')
           .where('action_name', isEqualTo: widget.event.actionName)
@@ -1427,17 +1528,6 @@ class _ChangedActionEventWidgetState extends State<ChangedActionEventWidget> {
 
       for (var doc in calendarEvents.docs) {
         await doc.reference.delete();
-      }
-
-      // 2. action_list에서 해당 액션 삭제
-      final actionListQuery = await FirebaseFirestore.instance
-          .collection('action_list')
-          .where('action_name', isEqualTo: widget.event.actionName)
-          .get();
-      print('action_list 콜렉션 조회 (action_name=${widget.event.actionName}): ${actionListQuery.docs.length}개의 문서 로드됨');
-
-      if (actionListQuery.docs.isNotEmpty) {
-        await actionListQuery.docs.first.reference.delete();
       }
 
       // 3. action_history에서 해당 액션 관련 기록 삭제
@@ -1526,7 +1616,7 @@ class _ChangedActionEventWidgetState extends State<ChangedActionEventWidget> {
         'action_status': 'completed',
         'action_name': widget.event.actionName,
         'goal_name': widget.event.goalName,
-        'action_execution_time': widget.event.actionExecutionTime,
+        'action_execution_time': widget.event.actionExecutionTime ?? 0.0,
         'description': markdownText,
         'attached_images': uploadedImageUrls,
         'attached_files': uploadedFileUrls,
@@ -1561,8 +1651,8 @@ class _ChangedActionEventWidgetState extends State<ChangedActionEventWidget> {
       'timestamp': FieldValue.serverTimestamp(),
       'action_status': selectedStatus ?? '',
       'action_status_description': markdownText,
-      'attached_file': fileUrls.isNotEmpty ? fileUrls.join(',') : '',
-      'attached_image': imageUrls.isNotEmpty ? imageUrls.join(',') : '',
+      'attached_file': filePathsForHistory,
+      'attached_image': imagePathsForHistory,
       'action_execution_time': widget.event.actionExecutionTime ?? 0.0,
     });
     print('=== _createActionHistory 종료 ===\n');
@@ -1784,6 +1874,7 @@ class _ChangedActionEventWidgetState extends State<ChangedActionEventWidget> {
   Future<List<String>> _uploadImages() async {
     print('=== _uploadImages 시작 ===');
     List<String> uploadedImageUrls = [];
+    List<String> storagePaths = [];
     
     try {
       final uid = Provider.of<AppState>(context, listen: false).currentUser?.uid;
@@ -1799,6 +1890,7 @@ class _ChangedActionEventWidgetState extends State<ChangedActionEventWidget> {
         final timestamp = DateTime.now().millisecondsSinceEpoch;
         final safeFileName = '${timestamp}_${image.name.replaceAll(RegExp(r'[^a-zA-Z0-9._]'), '_')}';
         final imagePath = '$basePath/images/$safeFileName';
+        storagePaths.add(imagePath);
         
         final metadata = SettableMetadata(
           contentType: 'image/jpeg',
@@ -1814,6 +1906,7 @@ class _ChangedActionEventWidgetState extends State<ChangedActionEventWidget> {
         uploadedImageUrls.add(imageUrl);
       }
 
+      // action_list 업데이트
       if (uploadedImageUrls.isNotEmpty) {
         final actionListQuery = await FirebaseFirestore.instance
             .collection('action_list')
@@ -1821,12 +1914,21 @@ class _ChangedActionEventWidgetState extends State<ChangedActionEventWidget> {
             .get();
 
         if (actionListQuery.docs.isNotEmpty) {
-          await actionListQuery.docs.first.reference.update({
-            'reference_image_count': FieldValue.increment(uploadedImageUrls.length),
-            'reference_image_urls': FieldValue.arrayUnion(uploadedImageUrls),
+          final doc = actionListQuery.docs.first;
+          final currentData = doc.data();
+          final currentCount = currentData['reference_image_count'] ?? 0;
+          final currentUrls = List<String>.from(currentData['reference_image_urls'] ?? []);
+
+          await doc.reference.update({
+            'reference_image_count': currentCount + uploadedImageUrls.length,
+            'reference_image_urls': [...currentUrls, ...uploadedImageUrls],
           });
         }
       }
+
+      // 이미지 경로 문자열 반환을 위해 전역 변수에 저장
+      imagePathsForHistory = storagePaths.join(',');
+      
     } catch (e) {
       print('이미지 업로드 오류: $e');
       throw Exception('이미지 업로드 실패: $e');
@@ -1838,32 +1940,25 @@ class _ChangedActionEventWidgetState extends State<ChangedActionEventWidget> {
 
   Future<List<String>> _uploadFiles() async {
     List<String> uploadedFileUrls = [];
+    List<String> storagePaths = [];
     
     try {
-      // 현재 사용자 ID 가져오기
       final uid = Provider.of<AppState>(context, listen: false).currentUser?.uid;
       if (uid == null) throw Exception('사용자 ID를 찾을 수 없습니다.');
 
-      // 저장 경로 설정
-      final basePath = 'uid/$uid/${widget.event.goalName}/${widget.event.actionName}';
-      
-      // Firebase Storage 참조 생성
+      final safeGoalName = widget.event.goalName?.replaceAll(RegExp(r'[^a-zA-Z0-9가-힣]'), '_') ?? 'unknown';
+      final safeActionName = widget.event.actionName?.replaceAll(RegExp(r'[^a-zA-Z0-9가-힣]'), '_') ?? 'unknown';
+      final basePath = 'users/$uid/$safeGoalName/$safeActionName';
       final storageRef = FirebaseStorage.instance.ref();
       
-      // 기존 파일 삭제
-      try {
-        final filesList = await storageRef.child('$basePath/file').listAll();
-        for (var item in filesList.items) {
-          await item.delete();
-        }
-      } catch (e) {
-        print('기존 파일 삭제 중 오류 (무시 가능): $e');
-      }
-
       // 새 파일 업로드
       for (var file in selectedFiles) {
         if (file.bytes != null) {
-          final filePath = '$basePath/file/${DateTime.now().millisecondsSinceEpoch}_${file.name}';
+          final timestamp = DateTime.now().millisecondsSinceEpoch;
+          final safeFileName = '${timestamp}_${file.name.replaceAll(RegExp(r'[^a-zA-Z0-9._]'), '_')}';
+          final filePath = '$basePath/file/$safeFileName';
+          storagePaths.add(filePath);
+          
           final fileRef = storageRef.child(filePath);
           await fileRef.putData(file.bytes!);
           final fileUrl = await fileRef.getDownloadURL();
@@ -1871,18 +1966,29 @@ class _ChangedActionEventWidgetState extends State<ChangedActionEventWidget> {
         }
       }
 
-      // action_list의 reference_file_count 업데이트
-      final actionListQuery = await FirebaseFirestore.instance
-          .collection('action_list')
-          .where('action_name', isEqualTo: widget.event.actionName)
-          .get();
+      // action_list 업데이트
+      if (uploadedFileUrls.isNotEmpty) {
+        final actionListQuery = await FirebaseFirestore.instance
+            .collection('action_list')
+            .where('action_name', isEqualTo: widget.event.actionName)
+            .get();
 
-      if (actionListQuery.docs.isNotEmpty) {
-        await actionListQuery.docs.first.reference.update({
-          'reference_file_count': uploadedFileUrls.length,
-        });
+        if (actionListQuery.docs.isNotEmpty) {
+          final doc = actionListQuery.docs.first;
+          final currentData = doc.data();
+          final currentCount = currentData['reference_file_count'] ?? 0;
+          final currentUrls = List<String>.from(currentData['reference_file_urls'] ?? []);
+
+          await doc.reference.update({
+            'reference_file_count': currentCount + uploadedFileUrls.length,
+            'reference_file_urls': [...currentUrls, ...uploadedFileUrls],
+          });
+        }
       }
 
+      // 파일 경로 문자열 반환을 위해 전역 변수에 저장
+      filePathsForHistory = storagePaths.join(',');
+      
     } catch (e) {
       print('파일 업로드 오류: $e');
       throw Exception('파일 업로드 실패: $e');
