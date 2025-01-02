@@ -1131,36 +1131,16 @@ class _GoalCardState extends State<GoalCard> {
         final fileCount = actionData['reference_file_count'] ?? 0;
 
         if (imageCount > 0 || fileCount > 0) {
-          final uid = Provider.of<AppState>(context, listen: false).currentUser?.uid;
-          if (uid != null) {
-            final safeGoalName = goal.name.replaceAll(RegExp(r'[^a-zA-Z0-9가-힣]'), '_');
-            final safeActionName = actionData['action_name']?.replaceAll(RegExp(r'[^a-zA-Z0-9가-힣]'), '_') ?? 'unknown';
-            final basePath = 'users/$uid/$safeGoalName/$safeActionName';
-            
-            try {
-              // 해당 action 폴더의 모든 내용 삭제
-              final storageRef = FirebaseStorage.instance.ref().child(basePath);
-              final result = await storageRef.listAll();
-              
-              // 모든 하위 항목 삭제
-              for (var prefix in result.prefixes) {
-                final subResult = await prefix.listAll();
-                for (var item in subResult.items) {
-                  await item.delete();
-                }
-              }
-              for (var item in result.items) {
-                await item.delete();
-              }
-              
-              print('Google Storage 파일 삭제 완료: $basePath');
-            } catch (e) {
-              print('Google Storage 파일 삭제 중 오류: $e');
-            }
-          }
+          await deleteStorageFiles(
+            context: context,
+            goalName: goal.name,
+            actionName: actionData['action_name'],
+          );
         }
-        
-        // action_list에서 문서 삭제
+      }
+      
+      // action_list에서 문서 삭제
+      for (var actionDoc in actionsSnapshot.docs) {
         await actionDoc.reference.delete();
       }
 
@@ -1560,32 +1540,11 @@ class _ActionCardState extends State<ActionCard> {
 
         // Storage 파일 삭제 처리
         if (imageCount > 0 || fileCount > 0) {
-          final uid = Provider.of<AppState>(context, listen: false).currentUser?.uid;
-          if (uid != null) {
-            final safeGoalName = widget.action.goal_name.replaceAll(RegExp(r'[^a-zA-Z0-9가-힣]'), '_');
-            final safeActionName = widget.action.action_name.replaceAll(RegExp(r'[^a-zA-Z0-9가-힣]'), '_');
-            final basePath = 'users/$uid/$safeGoalName/$safeActionName';
-            
-            try {
-              // 해당 action 폴더의 모든 내용 삭제
-              final storageRef = FirebaseStorage.instance.ref().child(basePath);
-              final result = await storageRef.listAll();
-              
-              // 모든 하위 항목 삭제
-              for (var prefix in result.prefixes) {
-                final subResult = await prefix.listAll();
-                for (var item in subResult.items) {
-                  await item.delete();
-                }
-              }
-              for (var item in result.items) {
-                await item.delete();
-              }
-              print('Google Storage 파일 삭제 완료: $basePath');
-            } catch (e) {
-              print('Google Storage 파일 삭제 중 오류: $e');
-            }
-          }
+          await deleteStorageFiles(
+            context: context,
+            goalName: widget.action.goal_name,
+            actionName: widget.action.action_name,
+          );
         }
       }
 
@@ -1970,5 +1929,44 @@ Future<Map<String, double>> _calculateAllRemainingTimes() async {
   } catch (e) {
     print('Error calculating remaining times: $e');
     return {};
+  }
+}
+
+// 새로운 유틸리티 메서드 추가
+Future<void> deleteStorageFiles({
+  required BuildContext context,
+  required String goalName,
+  String? actionName,
+}) async {
+  try {
+    final uid = Provider.of<AppState>(context, listen: false).currentUser?.uid;
+    if (uid == null) return;
+
+    final safeGoalName = goalName.replaceAll(RegExp(r'[^a-zA-Z0-9가-힣]'), '_');
+    String basePath = 'users/$uid/$safeGoalName';
+    
+    if (actionName != null) {
+      final safeActionName = actionName.replaceAll(RegExp(r'[^a-zA-Z0-9가-힣]'), '_');
+      basePath = '$basePath/$safeActionName';
+    }
+
+    // 해당 경로의 모든 내용 삭제
+    final storageRef = FirebaseStorage.instance.ref().child(basePath);
+    final result = await storageRef.listAll();
+    
+    // 모든 하위 항목 삭제
+    for (var prefix in result.prefixes) {
+      final subResult = await prefix.listAll();
+      for (var item in subResult.items) {
+        await item.delete();
+      }
+    }
+    for (var item in result.items) {
+      await item.delete();
+    }
+    
+    print('Google Storage 파일 삭제 완료: $basePath');
+  } catch (e) {
+    print('Google Storage 파일 삭제 중 오류: $e');
   }
 }
