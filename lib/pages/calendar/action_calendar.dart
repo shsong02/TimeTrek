@@ -330,6 +330,9 @@ class _ChangedActionEventWidgetState extends State<ChangedActionEventWidget> {
 
   String? _encodedImage; // base64 인코딩된 이미지를 저장할 변수 추가
 
+  // 저장 중 상태를 관리할 변수 추가
+  bool _isSaving = false;
+
   @override
   void initState() {
     super.initState();
@@ -1275,8 +1278,15 @@ class _ChangedActionEventWidgetState extends State<ChangedActionEventWidget> {
 
   // 저장 로직 수정
   Future<void> _handleSave() async {
-    print('=== _handleSave 시작 ===');
+    if (_isSaving) return; // 이미 저장 중이면 중복 실행 방지
+
+    setState(() {
+      _isSaving = true;
+    });
+
     try {
+      print('=== _handleSave 시작 ===');
+      
       if (!mounted) {
         print('컴포넌트가 마운트되지 않음');
         return;
@@ -1364,6 +1374,12 @@ class _ChangedActionEventWidgetState extends State<ChangedActionEventWidget> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('저장 중 오류가 발생했습니다: $e')),
         );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isSaving = false;
+        });
       }
     }
     print('=== _handleSave 종료 ===\n');
@@ -1955,18 +1971,36 @@ class _ChangedActionEventWidgetState extends State<ChangedActionEventWidget> {
                     ),
                     ElevatedButton(
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: _canSave() ? Colors.blue : Colors.grey,
+                        backgroundColor: _canSave() && !_isSaving ? Colors.blue : Colors.grey,
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(8),
                         ),
                         padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                       ),
-                      onPressed: _canSave() ? () => _handleSave() : null,
-                      child: Text('저장', 
-                        style: TextStyle(
-                          color: _canSave() ? Colors.white : Colors.grey[300],
-                        ),
-                      ),
+                      onPressed: (_canSave() && !_isSaving) ? () => _handleSave() : null,
+                      child: _isSaving
+                          ? Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                SizedBox(
+                                  width: 16,
+                                  height: 16,
+                                  child: CircularProgressIndicator(
+                                    color: Colors.white,
+                                    strokeWidth: 2,
+                                  ),
+                                ),
+                                SizedBox(width: 8),
+                                Text('저장 중...', 
+                                  style: TextStyle(color: Colors.white),
+                                ),
+                              ],
+                            )
+                          : Text('저장', 
+                              style: TextStyle(
+                                color: _canSave() ? Colors.white : Colors.grey[300],
+                              ),
+                            ),
                     ),
                   ],
                 ),

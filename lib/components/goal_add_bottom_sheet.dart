@@ -55,6 +55,13 @@ class _GoalAddBottomSheetState extends State<GoalAddBottomSheet> {
           topLeft: Radius.circular(20),
           topRight: Radius.circular(20),
         ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.1),
+            blurRadius: 10,
+            offset: Offset(0, -5),
+          ),
+        ],
       ),
       child: Form(
         key: _formKey,
@@ -62,15 +69,16 @@ class _GoalAddBottomSheetState extends State<GoalAddBottomSheet> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // 토글 스위치
+            // 헤더 부분 수정
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Text(
                   isActionMode ? 'Create action' : 'Create goal',
                   style: TextStyle(
-                    fontSize: 24,
-                    fontWeight: FontWeight.bold,
+                    fontSize: 20,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.black87,
                   ),
                 ),
                 Switch(
@@ -80,25 +88,41 @@ class _GoalAddBottomSheetState extends State<GoalAddBottomSheet> {
                       isActionMode = value;
                     });
                   },
+                  activeColor: Theme.of(context).primaryColor,
                 ),
               ],
             ),
+            Divider(height: 24),
 
-            // 조건부 폼 필드
+            // 폼 필드들 스타일 수정
             if (isActionMode) ...[
-              // Action 생성 폼
+              // Action 생성 폼 스타일 수정
               DropdownButtonFormField<String>(
                 decoration: InputDecoration(
                   labelText: 'Goal Name',
+                  labelStyle: TextStyle(fontSize: 13),
                   border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(8),
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide(color: Colors.grey.shade300),
                   ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide(color: Colors.grey.shade300),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide(color: Theme.of(context).primaryColor),
+                  ),
+                  contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                 ),
                 value: selectedGoalName,
                 items: goalNames.map((String value) {
                   return DropdownMenuItem<String>(
                     value: value,
-                    child: Text(value),
+                    child: Text(
+                      value,
+                      style: TextStyle(fontSize: 13),
+                    ),
                   );
                 }).toList(),
                 onChanged: (value) {
@@ -113,13 +137,26 @@ class _GoalAddBottomSheetState extends State<GoalAddBottomSheet> {
                   return null;
                 },
               ),
-              SizedBox(height: 12),
+              SizedBox(height: 16),
+              
+              // 나머지 TextFormField들도 동일한 스타일 적용
               TextFormField(
                 decoration: InputDecoration(
                   labelText: 'Action Name',
+                  labelStyle: TextStyle(fontSize: 13),
                   border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(8),
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide(color: Colors.grey.shade300),
                   ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide(color: Colors.grey.shade300),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide(color: Theme.of(context).primaryColor),
+                  ),
+                  contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                 ),
                 validator: (value) {
                   if (value == null || value.isEmpty) {
@@ -129,24 +166,46 @@ class _GoalAddBottomSheetState extends State<GoalAddBottomSheet> {
                 },
                 onSaved: (value) => actionName = value ?? '',
               ),
-              SizedBox(height: 12),
+              SizedBox(height: 16),
               TextFormField(
                 decoration: InputDecoration(
                   labelText: 'Action Description',
+                  labelStyle: TextStyle(fontSize: 13),
                   border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(8),
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide(color: Colors.grey.shade300),
                   ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide(color: Colors.grey.shade300),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide(color: Theme.of(context).primaryColor),
+                  ),
+                  contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                 ),
                 maxLines: 3,
                 onSaved: (value) => actionDescription = value ?? '',
               ),
-              SizedBox(height: 12),
+              SizedBox(height: 16),
               TextFormField(
                 decoration: InputDecoration(
                   labelText: 'Execution Time (hours)',
+                  labelStyle: TextStyle(fontSize: 13),
                   border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(8),
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide(color: Colors.grey.shade300),
                   ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide(color: Colors.grey.shade300),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide(color: Theme.of(context).primaryColor),
+                  ),
+                  contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                 ),
                 keyboardType: TextInputType.numberWithOptions(decimal: true),
                 validator: (value) {
@@ -163,13 +222,25 @@ class _GoalAddBottomSheetState extends State<GoalAddBottomSheet> {
                     actionExecutionTime = double.parse(value ?? '0'),
               ),
             ] else ...[
-              // Goal 생성 폼
+              // Goal 생성 폼도 동일한 스타일 적용
+              // ... existing goal form fields with updated style ...
               TextFormField(
                 decoration: InputDecoration(
                   labelText: 'Goal Name',
+                  labelStyle: TextStyle(fontSize: 13),
                   border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(8),
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide(color: Colors.grey.shade300),
                   ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide(color: Colors.grey.shade300),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide(color: Theme.of(context).primaryColor),
+                  ),
+                  contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                 ),
                 validator: (value) {
                   if (value == null || value.isEmpty) {
@@ -179,13 +250,24 @@ class _GoalAddBottomSheetState extends State<GoalAddBottomSheet> {
                 },
                 onSaved: (value) => goalName = value ?? '',
               ),
-              SizedBox(height: 12),
+              SizedBox(height: 16),
               TextFormField(
                 decoration: InputDecoration(
                   labelText: 'Description',
+                  labelStyle: TextStyle(fontSize: 13),
                   border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(8),
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide(color: Colors.grey.shade300),
                   ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide(color: Colors.grey.shade300),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide(color: Theme.of(context).primaryColor),
+                  ),
+                  contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                 ),
                 maxLines: 3,
                 validator: (value) {
@@ -196,19 +278,33 @@ class _GoalAddBottomSheetState extends State<GoalAddBottomSheet> {
                 },
                 onSaved: (value) => description = value ?? '',
               ),
-              SizedBox(height: 12),
+              SizedBox(height: 16),
               DropdownButtonFormField<String>(
                 decoration: InputDecoration(
                   labelText: 'Time Group',
+                  labelStyle: TextStyle(fontSize: 13),
                   border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(8),
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide(color: Colors.grey.shade300),
                   ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide(color: Colors.grey.shade300),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide(color: Theme.of(context).primaryColor),
+                  ),
+                  contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                 ),
                 value: selectedTimeGroup,
                 items: CalendarConstants.timeGroups.map((String value) {
                   return DropdownMenuItem<String>(
                     value: value,
-                    child: Text(value),
+                    child: Text(
+                      value,
+                      style: TextStyle(fontSize: 13),
+                    ),
                   );
                 }).toList(),
                 onChanged: (value) {
@@ -223,7 +319,7 @@ class _GoalAddBottomSheetState extends State<GoalAddBottomSheet> {
                   return null;
                 },
               ),
-              SizedBox(height: 12),
+              SizedBox(height: 16),
               Row(
                 children: [
                   Expanded(
@@ -231,9 +327,20 @@ class _GoalAddBottomSheetState extends State<GoalAddBottomSheet> {
                       controller: _tagController,
                       decoration: InputDecoration(
                         labelText: 'Add Tag',
+                        labelStyle: TextStyle(fontSize: 13),
                         border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(8),
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: BorderSide(color: Colors.grey.shade300),
                         ),
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: BorderSide(color: Colors.grey.shade300),
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: BorderSide(color: Theme.of(context).primaryColor),
+                        ),
+                        contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                         suffixIcon: IconButton(
                           icon: Icon(Icons.add),
                           onPressed: () => _addTag(),
@@ -260,21 +367,38 @@ class _GoalAddBottomSheetState extends State<GoalAddBottomSheet> {
                       .toList(),
                 )
             ],
-            SizedBox(height: 20),
+            SizedBox(height: 24),
             Row(
               mainAxisAlignment: MainAxisAlignment.end,
               children: [
                 TextButton(
                   onPressed: () => Navigator.pop(context),
-                  child: Text('Cancel'),
+                  child: Text(
+                    'Cancel',
+                    style: TextStyle(
+                      color: Colors.grey[700],
+                      fontSize: 14,
+                    ),
+                  ),
                 ),
-                SizedBox(width: 12),
+                SizedBox(width: 16),
                 ElevatedButton(
                   onPressed: isActionMode ? _submitActionForm : _submitGoalForm,
-                  child: Text(isActionMode ? 'Create Action' : 'Create Goal'),
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.blue[700],
-                    padding: EdgeInsets.symmetric(horizontal: 20, vertical: 15),
+                    backgroundColor: Theme.of(context).primaryColor,
+                    foregroundColor: Colors.white,
+                    padding: EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    elevation: 0,
+                  ),
+                  child: Text(
+                    isActionMode ? 'Create Action' : 'Create Goal',
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
                 ),
               ],
