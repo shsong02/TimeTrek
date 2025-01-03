@@ -3,6 +3,10 @@ import 'package:fl_chart/fl_chart.dart';
 import 'package:intl/intl.dart';
 import 'package:flutter/material.dart';
 import '/theme/time_trek_theme.dart';
+import 'dart:convert';
+import 'dart:io';
+import 'package:http/http.dart' as http;
+import 'package:flutter_markdown/flutter_markdown.dart';
 
 
 // 데이터 모델
@@ -177,6 +181,100 @@ class _GoalEvaluationState extends State<GoalEvaluation> {
   }
 }
 
+// 새로운 공통 필터 위젯 추가
+class InsightFilterWidget extends StatelessWidget {
+  final List<String> allTags;
+  final List<String> selectedTags;
+  final bool hideCompleted;
+  final Function(List<String>) onTagsChanged;
+  final Function(bool) onHideCompletedChanged;
+
+  const InsightFilterWidget({
+    Key? key,
+    required this.allTags,
+    required this.selectedTags,
+    required this.hideCompleted,
+    required this.onTagsChanged,
+    required this.onHideCompletedChanged,
+  }) : super(key: key);
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.all(8.0),
+      child: Column(
+        children: [
+          // 태그 필터
+          Wrap(
+            spacing: 8.0,
+            children: allTags.map((tag) {
+              return FilterChip(
+                label: Text(
+                  tag,
+                  style: TextStyle(
+                    color: selectedTags.contains(tag) ? Colors.white : Colors.grey[800],
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+                selected: selectedTags.contains(tag),
+                selectedColor: TimeTrekTheme.vitaflowBrandColor,
+                backgroundColor: Colors.grey[200],
+                checkmarkColor: Colors.white,
+                onDeleted: selectedTags.contains(tag) ? () {
+                  final newTags = List<String>.from(selectedTags)..remove(tag);
+                  onTagsChanged(newTags);
+                } : null,
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(20),
+                  side: BorderSide(
+                    color: selectedTags.contains(tag) 
+                        ? TimeTrekTheme.vitaflowBrandColor 
+                        : Colors.transparent,
+                  ),
+                ),
+                onSelected: (selected) {
+                  final newTags = List<String>.from(selectedTags);
+                  if (selected) {
+                    newTags.add(tag);
+                  } else {
+                    newTags.remove(tag);
+                  }
+                  onTagsChanged(newTags);
+                },
+              );
+            }).toList(),
+          ),
+          // Completed 상태 토글
+          Container(
+            margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            decoration: BoxDecoration(
+              color: Colors.grey[200],
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: SwitchListTile(
+              title: const Text(
+                '완료된 항목 숨기기',
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+              value: hideCompleted,
+              activeColor: TimeTrekTheme.vitaflowBrandColor,
+              activeTrackColor: TimeTrekTheme.vitaflowBrandColor.withOpacity(0.4),
+              inactiveThumbColor: Colors.grey[400],
+              inactiveTrackColor: Colors.grey[300],
+              onChanged: onHideCompletedChanged,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class InsightDailySummaryWidget extends StatefulWidget {
   final List<ActionEventData> actionEvents;
 
@@ -192,6 +290,35 @@ class InsightDailySummaryWidget extends StatefulWidget {
 class _InsightDailySummaryWidgetState extends State<InsightDailySummaryWidget> {
   List<String> selectedTags = [];
   bool hideCompleted = false;
+
+  Map<String, List<String>> _getAIAnalysisDetail() {
+    final today = DateTime.now();
+    final todayStart = DateTime(today.year, today.month, today.day);
+    final todayEnd = DateTime(today.year, today.month, today.day, 23, 59, 59);
+    final tomorrow = today.add(const Duration(days: 1));
+    final tomorrowStart = DateTime(tomorrow.year, tomorrow.month, tomorrow.day);
+    final tomorrowEnd = DateTime(tomorrow.year, tomorrow.month, tomorrow.day, 23, 59, 59);
+
+    final todayEvents = widget.actionEvents.where((e) => 
+      e.startTime.isAfter(todayStart) && e.endTime.isBefore(todayEnd));
+    
+    final tomorrowEvents = widget.actionEvents.where((e) => 
+      e.startTime.isAfter(tomorrowStart) && e.endTime.isBefore(tomorrowEnd));
+
+    return {
+      'today_completed': todayEvents
+          .where((e) => e.actionStatus == 'completed')
+          .map((e) => e.actionName)
+          .toList(),
+      'today_todo': todayEvents
+          .where((e) => e.actionStatus != 'completed')
+          .map((e) => e.actionName)
+          .toList(),
+      'tomorrow': tomorrowEvents
+          .map((e) => e.actionName)
+          .toList(),
+    };
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -212,78 +339,19 @@ class _InsightDailySummaryWidgetState extends State<InsightDailySummaryWidget> {
     return SingleChildScrollView(
       child: Column(
         children: [
-          // 필터링 UI
-          Padding(
-            padding: const EdgeInsets.all(8.0),
-            child: Column(
-              children: [
-                // 태그 필터
-                Wrap(
-                  spacing: 8.0,
-                  children: allTags.map((tag) {
-                    return FilterChip(
-                      label: Text(
-                        tag,
-                        style: TextStyle(
-                          color: selectedTags.contains(tag) ? Colors.white : Colors.grey[800],
-                          fontSize: 12,
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                      selected: selectedTags.contains(tag),
-                      selectedColor: TimeTrekTheme.vitaflowBrandColor,
-                      backgroundColor: Colors.grey[200],
-                      checkmarkColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(20),
-                        side: BorderSide(
-                          color: selectedTags.contains(tag) 
-                              ? TimeTrekTheme.vitaflowBrandColor 
-                              : Colors.transparent,
-                        ),
-                      ),
-                      onSelected: (selected) {
-                        setState(() {
-                          if (selected) {
-                            selectedTags.add(tag);
-                          } else {
-                            selectedTags.remove(tag);
-                          }
-                        });
-                      },
-                    );
-                  }).toList(),
-                ),
-                // Completed 상태 토글
-                Container(
-                  margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                  decoration: BoxDecoration(
-                    color: Colors.grey[200],
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: SwitchListTile(
-                    title: const Text(
-                      '완료된 항목 숨기기',
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                    value: hideCompleted,
-                    activeColor: TimeTrekTheme.vitaflowBrandColor,
-                    activeTrackColor: TimeTrekTheme.vitaflowBrandColor.withOpacity(0.4),
-                    inactiveThumbColor: Colors.grey[400],
-                    inactiveTrackColor: Colors.grey[300],
-                    onChanged: (value) {
-                      setState(() {
-                        hideCompleted = value;
-                      });
-                    },
-                  ),
-                ),
-              ],
-            ),
+          InsightFilterWidget(
+            allTags: allTags,
+            selectedTags: selectedTags,
+            hideCompleted: hideCompleted,
+            onTagsChanged: (tags) => setState(() => selectedTags = tags),
+            onHideCompletedChanged: (value) => setState(() => hideCompleted = value),
+          ),
+          
+          // AI 분석 위젯을 필터 다음으로 이동
+          AIAnalysisWidget(
+            type: 'daily',
+            events: widget.actionEvents,
+            detail: _getAIAnalysisDetail(),
           ),
 
           // 오늘의 진행 상황
@@ -423,6 +491,7 @@ class InsightWeeklySummaryWidget extends StatefulWidget {
 }
 
 class _InsightWeeklySummaryWidgetState extends State<InsightWeeklySummaryWidget> {
+  List<String> selectedTags = [];
   bool hideCompleted = false;
   late PageController _pageController;
   late List<WeekRange> weekRanges;
@@ -469,19 +538,48 @@ class _InsightWeeklySummaryWidgetState extends State<InsightWeeklySummaryWidget>
     return 0;
   }
 
+  Map<String, List<String>> _getAIAnalysisDetail() {
+    final now = DateTime.now();
+    final weekStart = now.subtract(Duration(days: now.weekday - 1));
+    final weekEnd = weekStart.add(const Duration(days: 7));
+
+    final thisWeekEvents = widget.actionEvents.where((e) => 
+      e.startTime.isAfter(weekStart) && e.endTime.isBefore(weekEnd));
+
+    return {
+      'thisweek_completed': thisWeekEvents
+          .where((e) => e.actionStatus == 'completed')
+          .map((e) => e.actionName)
+          .toList(),
+      'thisweek_todo': thisWeekEvents
+          .where((e) => e.actionStatus != 'completed')
+          .map((e) => e.actionName)
+          .toList(),
+    };
+  }
+
   @override
   Widget build(BuildContext context) {
+    final allTags = widget.actionEvents
+        .expand((event) => event.tags)
+        .toSet()
+        .toList();
+
     return Column(
       children: [
-        // 완료된 항목 토글
-        SwitchListTile(
-          title: const Text('완료된 항목 숨기기'),
-          value: hideCompleted,
-          onChanged: (value) {
-            setState(() {
-              hideCompleted = value;
-            });
-          },
+        InsightFilterWidget(
+          allTags: allTags,
+          selectedTags: selectedTags,
+          hideCompleted: hideCompleted,
+          onTagsChanged: (tags) => setState(() => selectedTags = tags),
+          onHideCompletedChanged: (value) => setState(() => hideCompleted = value),
+        ),
+        
+        // AI 분석 위젯을 필터 다음으로 이동
+        AIAnalysisWidget(
+          type: 'weekly',
+          events: widget.actionEvents,
+          detail: _getAIAnalysisDetail(),
         ),
         
         // 주간 캐러셀
@@ -549,7 +647,7 @@ class _InsightWeeklySummaryWidgetState extends State<InsightWeeklySummaryWidget>
                             startTime: week.start,
                             endTime: week.end,
                             timegroup: '',
-                            tag: const [],
+                            tag: selectedTags,
                             noActionStatus: hideCompleted ? ['completed'] : [],
                           ),
                           ProgressBarChartCheckList(
@@ -579,7 +677,7 @@ class _InsightWeeklySummaryWidgetState extends State<InsightWeeklySummaryWidget>
                             startTime: week.start,
                             endTime: week.end,
                             timegroup: '',
-                            tag: const [],
+                            tag: selectedTags,
                             noActionStatus: hideCompleted ? ['completed'] : [],
                           ),
                           ExecutionTimePieChartList(
@@ -587,7 +685,7 @@ class _InsightWeeklySummaryWidgetState extends State<InsightWeeklySummaryWidget>
                             startTime: week.start,
                             endTime: week.end,
                             timegroup: '',
-                            tag: const [],
+                            tag: selectedTags,
                             noActionStatus: hideCompleted ? ['completed'] : [],
                           ),
                         ],
@@ -612,7 +710,7 @@ class _InsightWeeklySummaryWidgetState extends State<InsightWeeklySummaryWidget>
                             startTime: week.start,
                             endTime: week.end,
                             timegroup: '',
-                            tag: const [],
+                            tag: selectedTags,
                             noActionStatus: hideCompleted ? ['completed'] : [],
                           ),
                           ActionHistoryTimelineList(
@@ -620,7 +718,7 @@ class _InsightWeeklySummaryWidgetState extends State<InsightWeeklySummaryWidget>
                             startTime: week.start,
                             endTime: week.end,
                             timegroup: '',
-                            tag: const [],
+                            tag: selectedTags,
                             noActionStatus: hideCompleted ? ['completed'] : [],
                           ),
                         ],
@@ -661,6 +759,26 @@ class _InsightMonthlySummaryWidgetState extends State<InsightMonthlySummaryWidge
   List<String> selectedTags = [];
   bool hideCompleted = false;
 
+  Map<String, List<String>> _getAIAnalysisDetail() {
+    final now = DateTime.now();
+    final monthStart = DateTime(now.year, now.month, 1);
+    final monthEnd = DateTime(now.year, now.month + 1, 0, 23, 59, 59);
+
+    final thisMonthEvents = widget.actionEvents.where((e) => 
+      e.startTime.isAfter(monthStart) && e.endTime.isBefore(monthEnd));
+
+    return {
+      'thismonth_completed': thisMonthEvents
+          .where((e) => e.actionStatus == 'completed')
+          .map((e) => e.actionName)
+          .toList(),
+      'thismonth_todo': thisMonthEvents
+          .where((e) => e.actionStatus != 'completed')
+          .map((e) => e.actionName)
+          .toList(),
+    };
+  }
+
   @override
   Widget build(BuildContext context) {
     final now = DateTime.now();
@@ -676,80 +794,21 @@ class _InsightMonthlySummaryWidgetState extends State<InsightMonthlySummaryWidge
     return SingleChildScrollView(
       child: Column(
         children: [
-          // 필터링 UI
-          Padding(
-            padding: const EdgeInsets.all(8.0),
-            child: Column(
-              children: [
-                // 태그 필터
-                Wrap(
-                  spacing: 8.0,
-                  children: allTags.map((tag) {
-                    return FilterChip(
-                      label: Text(
-                        tag,
-                        style: TextStyle(
-                          color: selectedTags.contains(tag) ? Colors.white : Colors.grey[800],
-                          fontSize: 12,
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                      selected: selectedTags.contains(tag),
-                      selectedColor: TimeTrekTheme.vitaflowBrandColor,
-                      backgroundColor: Colors.grey[200],
-                      checkmarkColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(20),
-                        side: BorderSide(
-                          color: selectedTags.contains(tag) 
-                              ? TimeTrekTheme.vitaflowBrandColor 
-                              : Colors.transparent,
-                        ),
-                      ),
-                      onSelected: (selected) {
-                        setState(() {
-                          if (selected) {
-                            selectedTags.add(tag);
-                          } else {
-                            selectedTags.remove(tag);
-                          }
-                        });
-                      },
-                    );
-                  }).toList(),
-                ),
-                // Completed 상태 토글
-                Container(
-                  margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                  decoration: BoxDecoration(
-                    color: Colors.grey[200],
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: SwitchListTile(
-                    title: const Text(
-                      '완료된 항목 숨기기',
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                    value: hideCompleted,
-                    activeColor: TimeTrekTheme.vitaflowBrandColor,
-                    activeTrackColor: TimeTrekTheme.vitaflowBrandColor.withOpacity(0.4),
-                    inactiveThumbColor: Colors.grey[400],
-                    inactiveTrackColor: Colors.grey[300],
-                    onChanged: (value) {
-                      setState(() {
-                        hideCompleted = value;
-                      });
-                    },
-                  ),
-                ),
-              ],
-            ),
+          InsightFilterWidget(
+            allTags: allTags,
+            selectedTags: selectedTags,
+            hideCompleted: hideCompleted,
+            onTagsChanged: (tags) => setState(() => selectedTags = tags),
+            onHideCompletedChanged: (value) => setState(() => hideCompleted = value),
           ),
-
+          
+          // AI 분석 위젯을 필터 다음으로 이동
+          AIAnalysisWidget(
+            type: 'monthly',
+            events: widget.actionEvents,
+            detail: _getAIAnalysisDetail(),
+          ),
+          
           // 월간 진행 상황
           Card(
             margin: const EdgeInsets.all(8.0),
@@ -1678,6 +1737,193 @@ class ActionHistoryTimelineList extends StatelessWidget {
           )).toList(),
         );
       },
+    );
+  }
+}
+
+// AI 분석 API 호출을 위한 서비스 클래스 추가
+class AIAnalysisService {
+  static Future<String> getAnalysis({
+    required String type,
+    required List<ActionEventData> events,
+    required Map<String, List<String>> detail,
+  }) async {
+    final url = Uri.parse('https://shsong83.app.n8n.cloud/webhook-test/timetrek-goal-evaluation');
+    
+    try {
+      final response = await http.post(
+        url,
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'type': type,
+          'actionEventData': events.map((e) => {
+            'actionName': e.actionName,
+            'goalName': e.goalName,
+            'timegroup': e.timegroup,
+            'tags': e.tags,
+            'actionStatus': e.actionStatus,
+            'actionStatusDescription': e.actionStatusDescription,
+            'actionExecutionTime': e.actionExecutionTime,
+            'startTime': e.startTime.toIso8601String(),
+            'endTime': e.endTime.toIso8601String(),
+          }).toList(),
+          'detail': detail,
+        }),
+      );
+
+      if (response.statusCode == 200) {
+        return response.body;
+      } else {
+        throw Exception('AI 분석 실패: ${response.statusCode}');
+      }
+    } catch (e) {
+      throw Exception('AI 분석 요청 중 오류 발생: $e');
+    }
+  }
+}
+
+// AI 분석 결과를 표시할 공통 위젯
+class AIAnalysisWidget extends StatefulWidget {
+  final String type;
+  final List<ActionEventData> events;
+  final Map<String, List<String>> detail;
+
+  const AIAnalysisWidget({
+    Key? key,
+    required this.type,
+    required this.events,
+    required this.detail,
+  }) : super(key: key);
+
+  @override
+  State<AIAnalysisWidget> createState() => _AIAnalysisWidgetState();
+}
+
+class _AIAnalysisWidgetState extends State<AIAnalysisWidget> {
+  String? _analysisResult;
+  Map<String, dynamic>? _parsedAnalysis;
+  bool _isLoading = false;
+
+  Future<void> _getAnalysis() async {
+    setState(() => _isLoading = true);
+    try {
+      final result = await AIAnalysisService.getAnalysis(
+        type: widget.type,
+        events: widget.events,
+        detail: widget.detail,
+      );
+      
+      // JSON 파싱 및 마크다운 형식으로 변환
+      final Map<String, dynamic> jsonResult = jsonDecode(result);
+      final output = jsonResult['output'] as Map<String, dynamic>;
+      
+      String markdownContent = '';
+      
+      if (widget.type == 'daily') {
+        markdownContent = '''
+## 오늘의 요약
+${output['today_summary']}
+
+### 주의사항
+${output['today_issue_point']}
+
+## 내일의 계획
+${output['tomorrow_summary']}
+
+### 주의사항
+${output['tomorrow_issue_point']}
+''';
+      }
+      // 다른 타입(weekly, monthly)에 대한 처리도 추가 가능
+
+      setState(() {
+        _analysisResult = markdownContent;
+        _parsedAnalysis = output;
+        _isLoading = false;
+      });
+    } catch (e) {
+      setState(() => _isLoading = false);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('분석 중 오류가 발생했습니다: $e')),
+        );
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      margin: const EdgeInsets.all(8.0),
+      child: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text(
+                  'AI 분석',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                ElevatedButton.icon(
+                  onPressed: _isLoading ? null : _getAnalysis,
+                  icon: _isLoading 
+                      ? const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.psychology),
+                  label: Text(_isLoading ? '분석 중...' : 'AI 분석하기'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: TimeTrekTheme.vitaflowBrandColor,
+                    foregroundColor: Colors.white,
+                  ),
+                ),
+              ],
+            ),
+            if (_analysisResult != null) ...[
+              const SizedBox(height: 16),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Colors.grey[100],
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.grey[300]!),
+                ),
+                child: MarkdownBody(
+                  data: _analysisResult!,
+                  styleSheet: MarkdownStyleSheet(
+                    p: const TextStyle(fontSize: 14, height: 1.5),
+                    h1: TextStyle(
+                      fontSize: 20, 
+                      fontWeight: FontWeight.bold,
+                      color: TimeTrekTheme.vitaflowBrandColor,
+                    ),
+                    h2: TextStyle(
+                      fontSize: 18, 
+                      fontWeight: FontWeight.bold,
+                      color: TimeTrekTheme.vitaflowBrandColor,
+                    ),
+                    h3: TextStyle(
+                      fontSize: 16, 
+                      fontWeight: FontWeight.bold,
+                      color: Colors.grey[700],
+                    ),
+                    listBullet: TextStyle(color: TimeTrekTheme.vitaflowBrandColor),
+                  ),
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
     );
   }
 }
