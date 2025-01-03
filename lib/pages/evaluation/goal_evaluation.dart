@@ -123,12 +123,44 @@ class _GoalEvaluationState extends State<GoalEvaluation> {
       length: 3,
       child: Column(
         children: [
-          const TabBar(
-            tabs: [
-              Tab(text: '일간 요약'),
-              Tab(text: '주간 요약'),
-              Tab(text: '월간 요약'),
-            ],
+          Container(
+            margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            decoration: BoxDecoration(
+              color: Colors.grey[900],
+              borderRadius: BorderRadius.circular(25),
+            ),
+            child: TabBar(
+              indicator: BoxDecoration(
+                color: TimeTrekTheme.vitaflowBrandColor,
+                borderRadius: BorderRadius.circular(25),
+              ),
+              labelColor: Colors.white,
+              unselectedLabelColor: Colors.grey,
+              labelStyle: const TextStyle(
+                fontWeight: FontWeight.bold,
+                fontSize: 14,
+              ),
+              tabs: const [
+                Tab(
+                  child: Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 8),
+                    child: Text('일간 요약'),
+                  ),
+                ),
+                Tab(
+                  child: Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 8),
+                    child: Text('주간 요약'),
+                  ),
+                ),
+                Tab(
+                  child: Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 8),
+                    child: Text('월간 요약'),
+                  ),
+                ),
+              ],
+            ),
           ),
           Expanded(
             child: TabBarView(
@@ -190,8 +222,27 @@ class _InsightDailySummaryWidgetState extends State<InsightDailySummaryWidget> {
                   spacing: 8.0,
                   children: allTags.map((tag) {
                     return FilterChip(
-                      label: Text(tag),
+                      label: Text(
+                        tag,
+                        style: TextStyle(
+                          color: selectedTags.contains(tag) ? Colors.white : Colors.grey[800],
+                          fontSize: 12,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
                       selected: selectedTags.contains(tag),
+                      selectedColor: TimeTrekTheme.vitaflowBrandColor,
+                      backgroundColor: Colors.grey[200],
+                      checkmarkColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(20),
+                        side: BorderSide(
+                          color: selectedTags.contains(tag) 
+                              ? TimeTrekTheme.vitaflowBrandColor 
+                              : Colors.transparent,
+                        ),
+                      ),
                       onSelected: (selected) {
                         setState(() {
                           if (selected) {
@@ -205,14 +256,31 @@ class _InsightDailySummaryWidgetState extends State<InsightDailySummaryWidget> {
                   }).toList(),
                 ),
                 // Completed 상태 토글
-                SwitchListTile(
-                  title: const Text('완료된 항목 숨기기'),
-                  value: hideCompleted,
-                  onChanged: (value) {
-                    setState(() {
-                      hideCompleted = value;
-                    });
-                  },
+                Container(
+                  margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: Colors.grey[200],
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: SwitchListTile(
+                    title: const Text(
+                      '완료된 항목 숨기기',
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                    value: hideCompleted,
+                    activeColor: TimeTrekTheme.vitaflowBrandColor,
+                    activeTrackColor: TimeTrekTheme.vitaflowBrandColor.withOpacity(0.4),
+                    inactiveThumbColor: Colors.grey[400],
+                    inactiveTrackColor: Colors.grey[300],
+                    onChanged: (value) {
+                      setState(() {
+                        hideCompleted = value;
+                      });
+                    },
+                  ),
                 ),
               ],
             ),
@@ -363,11 +431,15 @@ class _InsightWeeklySummaryWidgetState extends State<InsightWeeklySummaryWidget>
   @override
   void initState() {
     super.initState();
-    // 현재 달의 모든 주차 계산
     weekRanges = _calculateMonthWeeks();
-    // 현재 주차 인덱스 찾기
     initialPage = _findCurrentWeekIndex();
     _pageController = PageController(initialPage: initialPage);
+  }
+
+  @override
+  void dispose() {
+    _pageController.dispose();
+    super.dispose();
   }
 
   List<WeekRange> _calculateMonthWeeks() {
@@ -379,13 +451,8 @@ class _InsightWeeklySummaryWidgetState extends State<InsightWeeklySummaryWidget>
     DateTime weekStart = firstDayOfMonth;
     
     while (weekStart.isBefore(lastDayOfMonth)) {
-      // 월요일부터 시작하는 주의 시작일 계산
-      final daysToMonday = (weekStart.weekday - 1) % 7;
-      weekStart = weekStart.subtract(Duration(days: daysToMonday));
-      
       final weekEnd = weekStart.add(const Duration(days: 6, hours: 23, minutes: 59, seconds: 59));
       weeks.add(WeekRange(weekStart, weekEnd));
-      
       weekStart = weekStart.add(const Duration(days: 7));
     }
     
@@ -394,8 +461,12 @@ class _InsightWeeklySummaryWidgetState extends State<InsightWeeklySummaryWidget>
 
   int _findCurrentWeekIndex() {
     final now = DateTime.now();
-    return weekRanges.indexWhere((week) =>
-        now.isAfter(week.start) && now.isBefore(week.end));
+    for (int i = 0; i < weekRanges.length; i++) {
+      if (now.isAfter(weekRanges[i].start) && now.isBefore(weekRanges[i].end)) {
+        return i;
+      }
+    }
+    return 0;
   }
 
   @override
@@ -418,6 +489,9 @@ class _InsightWeeklySummaryWidgetState extends State<InsightWeeklySummaryWidget>
           child: PageView.builder(
             controller: _pageController,
             itemCount: weekRanges.length,
+            onPageChanged: (index) {
+              setState(() {});
+            },
             itemBuilder: (context, index) {
               final week = weekRanges[index];
               final isCurrentWeek = index == initialPage;
@@ -612,8 +686,27 @@ class _InsightMonthlySummaryWidgetState extends State<InsightMonthlySummaryWidge
                   spacing: 8.0,
                   children: allTags.map((tag) {
                     return FilterChip(
-                      label: Text(tag),
+                      label: Text(
+                        tag,
+                        style: TextStyle(
+                          color: selectedTags.contains(tag) ? Colors.white : Colors.grey[800],
+                          fontSize: 12,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
                       selected: selectedTags.contains(tag),
+                      selectedColor: TimeTrekTheme.vitaflowBrandColor,
+                      backgroundColor: Colors.grey[200],
+                      checkmarkColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(20),
+                        side: BorderSide(
+                          color: selectedTags.contains(tag) 
+                              ? TimeTrekTheme.vitaflowBrandColor 
+                              : Colors.transparent,
+                        ),
+                      ),
                       onSelected: (selected) {
                         setState(() {
                           if (selected) {
@@ -627,14 +720,31 @@ class _InsightMonthlySummaryWidgetState extends State<InsightMonthlySummaryWidge
                   }).toList(),
                 ),
                 // Completed 상태 토글
-                SwitchListTile(
-                  title: const Text('완료된 항목 숨기기'),
-                  value: hideCompleted,
-                  onChanged: (value) {
-                    setState(() {
-                      hideCompleted = value;
-                    });
-                  },
+                Container(
+                  margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: Colors.grey[200],
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: SwitchListTile(
+                    title: const Text(
+                      '완료된 항목 숨기기',
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                    value: hideCompleted,
+                    activeColor: TimeTrekTheme.vitaflowBrandColor,
+                    activeTrackColor: TimeTrekTheme.vitaflowBrandColor.withOpacity(0.4),
+                    inactiveThumbColor: Colors.grey[400],
+                    inactiveTrackColor: Colors.grey[300],
+                    onChanged: (value) {
+                      setState(() {
+                        hideCompleted = value;
+                      });
+                    },
+                  ),
                 ),
               ],
             ),
@@ -909,7 +1019,7 @@ class ProgressBarChart extends StatelessWidget {
                                 ),
                               ),
                             );
-                          } else {
+                          } else if (totalDuration.inDays <= 7) {
                             final date = startTime.add(Duration(days: value.toInt()));
                             return Padding(
                               padding: const EdgeInsets.only(top: 8.0),
@@ -922,7 +1032,23 @@ class ProgressBarChart extends StatelessWidget {
                                 ),
                               ),
                             );
+                          } else {
+                            final date = startTime.add(Duration(days: value.toInt() * 2));
+                            if (date.day % 5 == 0) {
+                              return Padding(
+                                padding: const EdgeInsets.only(top: 8.0),
+                                child: Text(
+                                  '${date.day}일',
+                                  style: const TextStyle(
+                                    color: Colors.white70,
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              );
+                            }
                           }
+                          return const SizedBox.shrink();
                         },
                       ),
                     ),
