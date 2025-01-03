@@ -59,6 +59,8 @@ class _CreateActionState extends State<CreateAction> {
   final ValueNotifier<bool> _refreshNotifier = ValueNotifier<bool>(false);
   // 각 그룹별 시간 정보를 저장하는 Map
   Map<String, double> _groupTimes = {};
+  // 새로운 상태 변수 추가
+  bool _isGeneratingActions = false;
 
   @override
   void initState() {
@@ -374,134 +376,142 @@ class _CreateActionState extends State<CreateAction> {
                               margin:
                                   const EdgeInsets.symmetric(horizontal: 16),
                               child: ElevatedButton.icon(
-                                onPressed: () async {
-                                  try {
-                                    // 구조화된 그룹 데이터 준비
-                                    final groupData = await prepareGroupData();
-
-                                    // POST 요청 보내기
-                                    final response = await http.post(
-                                      Uri.parse(
-                                          'https://shsong83.app.n8n.cloud/webhook/reqeust_actions'),
-                                      // 'https://shsong83.app.n8n.cloud/webhook-test/reqeust_actions'),
-                                      headers: {
-                                        'Content-Type': 'application/json'
-                                      },
-                                      body: jsonEncode(groupData),
-                                    );
-
-                                    if (response.statusCode == 200) {
-                                      print('데이터 전송 성공');
-                                      print('답 데이터: ${response.body}');
-
-                                      // 응답 데이터 파싱
-                                      final responseData =
-                                          jsonDecode(response.body)
-                                              as List<dynamic>;
-
-                                      // Firestore batch 생성
-                                      final batch =
-                                          FirebaseFirestore.instance.batch();
-
-                                      // 각 액션을 action_list 컬렉션에 추가
-                                      for (var actionData in responseData) {
-                                        final docRef = FirebaseFirestore
-                                            .instance
-                                            .collection('action_list')
-                                            .doc();
-
-                                        // 디버그 출력 추가
-                                        print('저장할 액션 데이터:');
-                                        print(
-                                            'timegroup: ${actionData['timegroup']}');
-                                        print(
-                                            'action_reason: ${actionData['action_reason']}');
-
-                                        batch.set(docRef, {
-                                          'action_name':
-                                              actionData['action_name'],
-                                          'action_description':
-                                              actionData['action_description'],
-                                          'action_execution_time': actionData[
-                                              'action_execution_time'],
-                                          'action_status': 'created',
-                                          'goal_name': actionData['goal_name'],
-                                          // timegroup과 action_reason이 null이 아닌 경우에만 저장
-                                          'timegroup':
-                                              actionData['timegroup'] ?? '',
-                                          'action_reason':
-                                              actionData['action_reason'] ?? '',
-                                          'order': actionData['order'] ?? 1,
-                                          'created_at':
-                                              FieldValue.serverTimestamp(),
-                                          'reference_image_count': 0,
-                                          'reference_file_count': 0,
+                                onPressed: _isGeneratingActions 
+                                  ? null  // 생성 중일 때는 버튼 비활성화
+                                  : () async {
+                                      try {
+                                        setState(() {
+                                          _isGeneratingActions = true;  // 생성 시작
                                         });
-                                      }
 
-                                      // batch 커밋
-                                      await batch.commit();
+                                        // 구조화된 그룹 데이터 준비
+                                        final groupData = await prepareGroupData();
 
-                                      if (mounted) {
-                                        ScaffoldMessenger.of(context)
-                                            .showSnackBar(
-                                          SnackBar(
-                                              content: Text(
-                                                  '${responseData.length}개의 액션이 생성되었습니다')),
+                                        // POST 요청 보내기
+                                        final response = await http.post(
+                                          // Uri.parse('https://shsong83.app.n8n.cloud/webhook-test/reqeust_actions'),
+                                          Uri.parse('https://shsong83.app.n8n.cloud/webhook/reqeust_actions'),
+                                          headers: {'Content-Type': 'application/json'},
+                                          body: jsonEncode(groupData),
                                         );
-                                        // 데이터 새로고침
-                                        await _loadData();
-                                      }
-                                    } else {
-                                      print(
-                                          '데이터 전송 실패: ${response.statusCode}');
-                                      print('에러 응답: ${response.body}');
 
-                                      if (mounted && context.mounted) {
-                                        final messenger =
-                                            ScaffoldMessenger.of(context);
-                                        WidgetsBinding.instance
-                                            .addPostFrameCallback((_) {
-                                          messenger.hideCurrentSnackBar();
-                                          messenger.showSnackBar(
+                                        if (response.statusCode == 200) {
+                                          print('데이터 전송 성공');
+                                          print('답 데이터: ${response.body}');
+
+                                          // 응답 데이터 파싱
+                                          final responseData =
+                                              jsonDecode(response.body)
+                                                  as List<dynamic>;
+
+                                          // Firestore batch 생성
+                                          final batch =
+                                              FirebaseFirestore.instance.batch();
+
+                                          // 각 액션을 action_list 컬렉션에 추가
+                                          for (var actionData in responseData) {
+                                            final docRef = FirebaseFirestore
+                                                .instance
+                                                .collection('action_list')
+                                                .doc();
+
+                                            // 디버그 출력 추가
+                                            print('저장할 액션 데이터:');
+                                            print(
+                                                'timegroup: ${actionData['timegroup']}');
+                                            print(
+                                                'action_reason: ${actionData['action_reason']}');
+
+                                            batch.set(docRef, {
+                                              'action_name':
+                                                  actionData['action_name'],
+                                              'action_description':
+                                                  actionData['action_description'],
+                                              'action_execution_time': actionData[
+                                                  'action_execution_time'],
+                                              'action_status': 'created',
+                                              'goal_name': actionData['goal_name'],
+                                              // timegroup과 action_reason이 null이 아닌 경우에만 저장
+                                              'timegroup':
+                                                  actionData['timegroup'] ?? '',
+                                              'action_reason':
+                                                  actionData['action_reason'] ?? '',
+                                              'order': actionData['order'] ?? 1,
+                                              'created_at':
+                                                  FieldValue.serverTimestamp(),
+                                              'reference_image_count': 0,
+                                              'reference_file_count': 0,
+                                            });
+                                          }
+
+                                          // batch 커밋
+                                          await batch.commit();
+
+                                          if (mounted) {
+                                            ScaffoldMessenger.of(context)
+                                                .showSnackBar(
+                                              SnackBar(
+                                                  content: Text(
+                                                      '${responseData.length}개의 액션이 생성되었습니다')),
+                                            );
+                                            // 데이터 새로고침
+                                            await _loadData();
+                                          }
+                                        } else {
+                                          print(
+                                              '데이터 전송 실패: ${response.statusCode}');
+                                          print('에러 응답: ${response.body}');
+
+                                          if (mounted && context.mounted) {
+                                            final messenger =
+                                                ScaffoldMessenger.of(context);
+                                            WidgetsBinding.instance
+                                                .addPostFrameCallback((_) {
+                                              messenger.hideCurrentSnackBar();
+                                              messenger.showSnackBar(
+                                                SnackBar(
+                                                  content: Text(
+                                                    '서버 오류가 발생했습니다 (${response.statusCode}): ${response.body}',
+                                                  ),
+                                                  backgroundColor: Colors.red,
+                                                  duration: Duration(seconds: 3),
+                                                  behavior:
+                                                      SnackBarBehavior.floating,
+                                                  margin: EdgeInsets.all(16),
+                                                ),
+                                              );
+                                            });
+                                          }
+                                        }
+                                      } catch (e) {
+                                        print('AI 생성 로직 오류: $e');
+                                        if (mounted && context.mounted) {
+                                          ScaffoldMessenger.of(context).showSnackBar(
                                             SnackBar(
-                                              content: Text(
-                                                '서버 오류가 발생했습니다 (${response.statusCode}): ${response.body}',
-                                              ),
+                                              content: Text('AI 생성 중 오류가 발생했습니다: $e'),
                                               backgroundColor: Colors.red,
-                                              duration: Duration(seconds: 3),
-                                              behavior:
-                                                  SnackBarBehavior.floating,
-                                              margin: EdgeInsets.all(16),
                                             ),
                                           );
-                                        });
+                                        }
+                                      } finally {
+                                        if (mounted) {
+                                          setState(() {
+                                            _isGeneratingActions = false;  // 생성 완료
+                                          });
+                                        }
                                       }
-                                    }
-                                  } catch (e) {
-                                    print('AI 생성 로직 오류: $e');
-                                    if (mounted && context.mounted) {
-                                      final messenger =
-                                          ScaffoldMessenger.of(context);
-                                      WidgetsBinding.instance
-                                          .addPostFrameCallback((_) {
-                                        messenger.hideCurrentSnackBar();
-                                        messenger.showSnackBar(
-                                          SnackBar(
-                                            content:
-                                                Text('AI 생성 중 오류가 발생했습니다: $e'),
-                                            backgroundColor: Colors.red,
-                                            duration: Duration(seconds: 3),
-                                            behavior: SnackBarBehavior.floating,
-                                            margin: EdgeInsets.all(16),
-                                          ),
-                                        );
-                                      });
-                                    }
-                                  }
-                                },
-                                icon: Icon(Icons.auto_awesome, size: 20),
-                                label: Text('AI 상세화'),
+                                    },
+                                icon: _isGeneratingActions 
+                                  ? SizedBox(
+                                      width: 20,
+                                      height: 20,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                        valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                                      ),
+                                    )
+                                  : Icon(Icons.auto_awesome, size: 20),
+                                label: Text(_isGeneratingActions ? '생성 중...' : 'AI 상세화'),
                                 style: ElevatedButton.styleFrom(
                                   backgroundColor: Theme.of(context).colorScheme.secondary,
                                   padding: EdgeInsets.symmetric(vertical: 12),

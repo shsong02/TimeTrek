@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:intl/intl.dart';
 import 'package:flutter/material.dart';
+import '/theme/time_trek_theme.dart';
 
 
 // 데이터 모델
@@ -223,18 +224,18 @@ class _InsightDailySummaryWidgetState extends State<InsightDailySummaryWidget> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Padding(
-                  padding: EdgeInsets.all(16.0),
+                Padding(
+                  padding: const EdgeInsets.all(16.0),
                   child: Text(
                     '오늘의 진행 상황',
-                    style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                    style: Theme.of(context).textTheme.titleLarge,
                   ),
                 ),
                 // 차트와 체크리스트
                 Card(
                   child: Column(
                     children: [
-                      ProgressLineChart(
+                      ProgressBarChart(
                         actionEvents: widget.actionEvents,
                         startTime: todayStart,
                         endTime: todayEnd,
@@ -242,7 +243,7 @@ class _InsightDailySummaryWidgetState extends State<InsightDailySummaryWidget> {
                         tag: selectedTags,
                         noActionStatus: hideCompleted ? ['completed'] : [],
                       ),
-                      ProgressLineChartCheckList(
+                      ProgressBarChartCheckList(
                         actionEvents: widget.actionEvents,
                         startTime: todayStart,
                         endTime: todayEnd,
@@ -283,18 +284,18 @@ class _InsightDailySummaryWidgetState extends State<InsightDailySummaryWidget> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Padding(
-                  padding: EdgeInsets.all(16.0),
+                Padding(
+                  padding: const EdgeInsets.all(16.0),
                   child: Text(
                     '내일 예정된 항목',
-                    style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                    style: Theme.of(context).textTheme.titleLarge,
                   ),
                 ),
                 // 동일한 위젯들을 내일 날짜로 구성
                 Card(
                   child: Column(
                     children: [
-                      ProgressLineChart(
+                      ProgressBarChart(
                         actionEvents: widget.actionEvents,
                         startTime: tomorrowStart,
                         endTime: tomorrowEnd,
@@ -302,7 +303,7 @@ class _InsightDailySummaryWidgetState extends State<InsightDailySummaryWidget> {
                         tag: selectedTags,
                         noActionStatus: hideCompleted ? ['completed'] : [],
                       ),
-                      ProgressLineChartCheckList(
+                      ProgressBarChartCheckList(
                         actionEvents: widget.actionEvents,
                         startTime: tomorrowStart,
                         endTime: tomorrowEnd,
@@ -355,25 +356,53 @@ class InsightWeeklySummaryWidget extends StatefulWidget {
 
 class _InsightWeeklySummaryWidgetState extends State<InsightWeeklySummaryWidget> {
   bool hideCompleted = false;
-  final PageController _pageController = PageController();
-  late List<DateTime> weekStartDates;
+  late PageController _pageController;
+  late List<WeekRange> weekRanges;
+  late int initialPage;
 
   @override
   void initState() {
     super.initState();
-    // 최근 4주의 시작일 계산
+    // 현재 달의 모든 주차 계산
+    weekRanges = _calculateMonthWeeks();
+    // 현재 주차 인덱스 찾기
+    initialPage = _findCurrentWeekIndex();
+    _pageController = PageController(initialPage: initialPage);
+  }
+
+  List<WeekRange> _calculateMonthWeeks() {
     final now = DateTime.now();
-    final currentWeekStart = now.subtract(Duration(days: now.weekday - 1));
-    weekStartDates = List.generate(4, (index) {
-      return currentWeekStart.subtract(Duration(days: 7 * index));
-    }).reversed.toList();
+    final firstDayOfMonth = DateTime(now.year, now.month, 1);
+    final lastDayOfMonth = DateTime(now.year, now.month + 1, 0);
+    
+    List<WeekRange> weeks = [];
+    DateTime weekStart = firstDayOfMonth;
+    
+    while (weekStart.isBefore(lastDayOfMonth)) {
+      // 월요일부터 시작하는 주의 시작일 계산
+      final daysToMonday = (weekStart.weekday - 1) % 7;
+      weekStart = weekStart.subtract(Duration(days: daysToMonday));
+      
+      final weekEnd = weekStart.add(const Duration(days: 6, hours: 23, minutes: 59, seconds: 59));
+      weeks.add(WeekRange(weekStart, weekEnd));
+      
+      weekStart = weekStart.add(const Duration(days: 7));
+    }
+    
+    return weeks;
+  }
+
+  int _findCurrentWeekIndex() {
+    final now = DateTime.now();
+    return weekRanges.indexWhere((week) =>
+        now.isAfter(week.start) && now.isBefore(week.end));
   }
 
   @override
   Widget build(BuildContext context) {
     return Column(
       children: [
-        // 상태 토글
+        // 완료된 항목 토글
         SwitchListTile(
           title: const Text('완료된 항목 숨기기'),
           value: hideCompleted,
@@ -388,60 +417,101 @@ class _InsightWeeklySummaryWidgetState extends State<InsightWeeklySummaryWidget>
         Expanded(
           child: PageView.builder(
             controller: _pageController,
-            itemCount: weekStartDates.length,
+            itemCount: weekRanges.length,
             itemBuilder: (context, index) {
-              final weekStart = weekStartDates[index];
-              final weekEnd = weekStart.add(const Duration(days: 6, hours: 23, minutes: 59, seconds: 59));
+              final week = weekRanges[index];
+              final isCurrentWeek = index == initialPage;
               
               return SingleChildScrollView(
                 child: Column(
                   children: [
-                    // 주차 표시
-                    Padding(
+                    Container(
                       padding: const EdgeInsets.all(8.0),
-                      child: Text(
-                        '${DateFormat('MM/dd').format(weekStart)} - ${DateFormat('MM/dd').format(weekEnd)}',
-                        style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                      decoration: isCurrentWeek ? BoxDecoration(
+                        color: TimeTrekTheme.vitaflowBrandColor.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(8),
+                      ) : null,
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Text(
+                            '${DateFormat('MM/dd').format(week.start)} - ${DateFormat('MM/dd').format(week.end)}',
+                            style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                              fontWeight: isCurrentWeek ? FontWeight.bold : null,
+                              color: isCurrentWeek ? TimeTrekTheme.vitaflowBrandColor : null,
+                            ),
+                          ),
+                          if (isCurrentWeek) ...[
+                            const SizedBox(width: 8),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: TimeTrekTheme.vitaflowBrandColor,
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: const Text(
+                                '이번 주',
+                                style: TextStyle(color: Colors.white, fontSize: 12),
+                              ),
+                            ),
+                          ],
+                        ],
                       ),
                     ),
-                    
-                    // 진행 상황 차트
                     Card(
+                      margin: const EdgeInsets.all(8.0),
                       child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          ProgressLineChart(
+                          Padding(
+                            padding: const EdgeInsets.all(16.0),
+                            child: Text(
+                              '진행 상황',
+                              style: Theme.of(context).textTheme.titleLarge,
+                            ),
+                          ),
+                          ProgressBarChart(
                             actionEvents: widget.actionEvents,
-                            startTime: weekStart,
-                            endTime: weekEnd,
+                            startTime: week.start,
+                            endTime: week.end,
                             timegroup: '',
                             tag: const [],
                             noActionStatus: hideCompleted ? ['completed'] : [],
                           ),
-                          ProgressLineChartCheckList(
+                          ProgressBarChartCheckList(
                             actionEvents: widget.actionEvents,
-                            startTime: weekStart,
-                            endTime: weekEnd,
+                            startTime: week.start,
+                            endTime: week.end,
                           ),
                         ],
                       ),
                     ),
-                    
-                    // 실행 시간 차트
+
+                    // 실행 시간 분석
                     Card(
+                      margin: const EdgeInsets.all(8.0),
                       child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
+                          Padding(
+                            padding: const EdgeInsets.all(16.0),
+                            child: Text(
+                              '실행 시간 분석',
+                              style: Theme.of(context).textTheme.titleLarge,
+                            ),
+                          ),
                           ExecutionTimePieChart(
                             actionEvents: widget.actionEvents,
-                            startTime: weekStart,
-                            endTime: weekEnd,
+                            startTime: week.start,
+                            endTime: week.end,
                             timegroup: '',
                             tag: const [],
                             noActionStatus: hideCompleted ? ['completed'] : [],
                           ),
                           ExecutionTimePieChartList(
                             actionEvents: widget.actionEvents,
-                            startTime: weekStart,
-                            endTime: weekEnd,
+                            startTime: week.start,
+                            endTime: week.end,
                             timegroup: '',
                             tag: const [],
                             noActionStatus: hideCompleted ? ['completed'] : [],
@@ -449,23 +519,32 @@ class _InsightWeeklySummaryWidgetState extends State<InsightWeeklySummaryWidget>
                         ],
                       ),
                     ),
-                    
-                    // 액션 히스토리 타임라인
+
+                    // 액션 히스토리
                     Card(
+                      margin: const EdgeInsets.all(8.0),
                       child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
+                          Padding(
+                            padding: const EdgeInsets.all(16.0),
+                            child: Text(
+                              '액션 히스토리',
+                              style: Theme.of(context).textTheme.titleLarge,
+                            ),
+                          ),
                           ActionHistoryTimeline(
                             actionEvents: widget.actionEvents,
-                            startTime: weekStart,
-                            endTime: weekEnd,
+                            startTime: week.start,
+                            endTime: week.end,
                             timegroup: '',
                             tag: const [],
                             noActionStatus: hideCompleted ? ['completed'] : [],
                           ),
                           ActionHistoryTimelineList(
                             actionEvents: widget.actionEvents,
-                            startTime: weekStart,
-                            endTime: weekEnd,
+                            startTime: week.start,
+                            endTime: week.end,
                             timegroup: '',
                             tag: const [],
                             noActionStatus: hideCompleted ? ['completed'] : [],
@@ -482,6 +561,14 @@ class _InsightWeeklySummaryWidgetState extends State<InsightWeeklySummaryWidget>
       ],
     );
   }
+}
+
+// 주차 범위를 저장하는 헬퍼 클래스
+class WeekRange {
+  final DateTime start;
+  final DateTime end;
+
+  WeekRange(this.start, this.end);
 }
 
 class InsightMonthlySummaryWidget extends StatefulWidget {
@@ -570,7 +657,7 @@ class _InsightMonthlySummaryWidgetState extends State<InsightMonthlySummaryWidge
                 Card(
                   child: Column(
                     children: [
-                      ProgressLineChart(
+                      ProgressBarChart(
                         actionEvents: widget.actionEvents,
                         startTime: monthStart,
                         endTime: monthEnd,
@@ -578,7 +665,7 @@ class _InsightMonthlySummaryWidgetState extends State<InsightMonthlySummaryWidge
                         tag: selectedTags,
                         noActionStatus: hideCompleted ? ['completed'] : [],
                       ),
-                      ProgressLineChartCheckList(
+                      ProgressBarChartCheckList(
                         actionEvents: widget.actionEvents,
                         startTime: monthStart,
                         endTime: monthEnd,
@@ -641,7 +728,7 @@ class _InsightMonthlySummaryWidgetState extends State<InsightMonthlySummaryWidge
   }
 }
 
-class ProgressLineChart extends StatelessWidget {
+class ProgressBarChart extends StatelessWidget {
   final List<ActionEventData> actionEvents;
   final DateTime startTime;
   final DateTime endTime;
@@ -649,7 +736,7 @@ class ProgressLineChart extends StatelessWidget {
   final List<String> tag;
   final List<String> noActionStatus;
 
-  const ProgressLineChart({
+  const ProgressBarChart({
     Key? key,
     required this.actionEvents,
     required this.startTime,
@@ -659,9 +746,35 @@ class ProgressLineChart extends StatelessWidget {
     required this.noActionStatus,
   }) : super(key: key);
 
+
   @override
   Widget build(BuildContext context) {
-    // 필터링된 이벤트 목록
+    // 시간 간격 계산 수정
+    final totalDuration = endTime.difference(startTime);
+    final isWithinDay = totalDuration.inHours <= 24;
+    final intervalDuration = isWithinDay 
+        ? const Duration(hours: 2)  // 2시간 단위
+        : totalDuration.inDays <= 7 
+            ? const Duration(days: 1)  // 1일 단위
+            : const Duration(days: 2);  // 2일 단위
+
+    // 전체 구간 수 계산 수정
+    final totalIntervals = isWithinDay
+        ? 12  // 24시간을 2시간 간격으로 나누면 12개 구간
+        : totalDuration.inDays <= 7
+            ? totalDuration.inDays + 1
+            : (totalDuration.inDays / 2).ceil();
+
+    // 모든 구간에 대해 기본값 0으로 초기화
+    final Map<int, double> scheduledTimeByPeriod = {
+      for (var i = 0; i < totalIntervals; i++) i: 0
+    };
+    final Map<int, double> completedTimeByPeriod = {
+      for (var i = 0; i < totalIntervals; i++) i: 0
+    };
+    final Map<int, List<ActionEventData>> eventsByPeriod = {};
+
+    // 필터링된 이벤트에 대한 시간 계산
     final filteredEvents = actionEvents.where((event) {
       final isInTimeRange = event.startTime.isAfter(startTime) && 
                           event.endTime.isBefore(endTime);
@@ -672,78 +785,276 @@ class ProgressLineChart extends StatelessWidget {
       return isInTimeRange && isInTimegroup && hasTag && isNotExcluded;
     }).toList();
 
-    // 목표 라인과 실제 진행 라인 데이터 생성
-    final targetLine = <FlSpot>[];
-    final successLine = <FlSpot>[];
-    
-    if (filteredEvents.isNotEmpty) {
-      double accumulatedTarget = 0;
-      double accumulatedSuccess = 0;
-      
-      for (var event in filteredEvents) {
-        final daysFromStart = event.startTime.difference(startTime).inDays.toDouble();
-        
-        accumulatedTarget += event.actionExecutionTime;
-        targetLine.add(FlSpot(daysFromStart, accumulatedTarget));
-        
+    // 이벤트 시간 계산 및 할당 수정
+    for (var event in filteredEvents) {
+      var currentTime = event.startTime;
+      while (currentTime.isBefore(event.endTime)) {
+        final periodIndex = isWithinDay
+            ? currentTime.hour ~/ 2  // 2시간 단위로 인덱스 계산
+            : totalDuration.inDays <= 7
+                ? currentTime.difference(startTime).inDays
+                : currentTime.difference(startTime).inDays ~/ 2;
+
+        // 이벤트 목록 저장
+        eventsByPeriod.putIfAbsent(periodIndex, () => []).add(event);
+
+        // 실행 시간 계산 (구간에 걸쳐있는 시간만큼 분배)
+        final periodEnd = currentTime.add(intervalDuration);
+        final eventEndInPeriod = event.endTime.isBefore(periodEnd) 
+            ? event.endTime 
+            : periodEnd;
+        final durationInPeriod = eventEndInPeriod.difference(currentTime).inMinutes;
+        final totalDurationMinutes = event.endTime.difference(event.startTime).inMinutes;
+        final ratio = durationInPeriod / totalDurationMinutes;
+        final timeInPeriod = event.actionExecutionTime * ratio;
+
+        // 예정된 시간 업데이트
+        scheduledTimeByPeriod.update(
+          periodIndex,
+          (value) => value + timeInPeriod,
+          ifAbsent: () => timeInPeriod,
+        );
+
+        // 완료된 시간 업데이트
         if (event.actionStatus == 'completed') {
-          accumulatedSuccess += event.actionExecutionTime;
-          successLine.add(FlSpot(daysFromStart, accumulatedSuccess));
+          completedTimeByPeriod.update(
+            periodIndex,
+            (value) => value + timeInPeriod,
+            ifAbsent: () => timeInPeriod,
+          );
         }
+
+        currentTime = periodEnd;
       }
     }
 
-    return SizedBox(
-      height: 200,
-      child: LineChart(
-        LineChartData(
-          gridData: FlGridData(show: true),
-          titlesData: FlTitlesData(
-            leftTitles: AxisTitles(
-              sideTitles: SideTitles(
-                showTitles: true,
-                reservedSize: 40,
-              ),
-            ),
-            bottomTitles: AxisTitles(
-              sideTitles: SideTitles(
-                showTitles: true,
-                reservedSize: 30,
-                getTitlesWidget: (value, meta) {
-                  final date = startTime.add(Duration(days: value.toInt()));
-                  return Text(DateFormat('MM/dd').format(date));
-                },
+    return Column(
+      children: [
+        // 범례 추가
+        Padding(
+          padding: const EdgeInsets.all(8.0),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              _buildLegendItem('예상 실행 시간', TimeTrekTheme.vitaflowBrandColor),
+              const SizedBox(width: 16),
+              _buildLegendItem('실제 실행 시간', TimeTrekTheme.proudMomentColor),
+            ],
+          ),
+        ),
+        Container(
+          decoration: BoxDecoration(
+            color: Colors.grey[900],
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: AspectRatio(
+            aspectRatio: 2,
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: BarChart(
+                BarChartData(
+                  alignment: BarChartAlignment.spaceAround,
+                  maxY: scheduledTimeByPeriod.isEmpty ? 10 : 
+                        scheduledTimeByPeriod.values.reduce((a, b) => a > b ? a : b) * 1.2,
+                  barTouchData: BarTouchData(
+                    enabled: true,
+                    touchTooltipData: BarTouchTooltipData(
+                      tooltipBgColor: Colors.black87,
+                      getTooltipItem: (group, groupIndex, rod, rodIndex) {
+                        final periodEvents = eventsByPeriod[group.x.toInt()] ?? [];
+                        if (periodEvents.isEmpty) return null;
+
+                        final tooltipText = rodIndex == 0 
+                            ? '예정된 액션:\n' 
+                            : '완료된 액션:\n';
+                        
+                        final displayEvents = periodEvents.take(4).toList();
+                        final remainingCount = periodEvents.length - displayEvents.length;
+                        
+                        final tooltipContent = tooltipText + displayEvents
+                            .map((e) => '${e.actionName} (${e.actionExecutionTime}h)')
+                            .join('\n') +
+                            (remainingCount > 0 ? '\n외 $remainingCount개' : '');
+                        
+                        return BarTooltipItem(
+                          tooltipContent,
+                          const TextStyle(
+                            color: Colors.white,
+                            fontSize: 10,
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                  titlesData: FlTitlesData(
+                    show: true,
+                    bottomTitles: AxisTitles(
+                      sideTitles: SideTitles(
+                        showTitles: true,
+                        reservedSize: 28,
+                        getTitlesWidget: (value, meta) {
+                          if (isWithinDay) {
+                            final hour = startTime.add(Duration(hours: value.toInt() * 2)).hour;
+                            if (hour % 4 != 0) {
+                              return const SizedBox.shrink();
+                            }
+                            return Padding(
+                              padding: const EdgeInsets.only(top: 8.0),
+                              child: Text(
+                                '$hour시',
+                                style: const TextStyle(
+                                  color: Colors.white70,
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            );
+                          } else {
+                            final date = startTime.add(Duration(days: value.toInt()));
+                            return Padding(
+                              padding: const EdgeInsets.only(top: 8.0),
+                              child: Text(
+                                DateFormat('E').format(date),
+                                style: const TextStyle(
+                                  color: Colors.white70,
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            );
+                          }
+                        },
+                      ),
+                    ),
+                    leftTitles: AxisTitles(
+                      sideTitles: SideTitles(
+                        showTitles: true,
+                        reservedSize: 40,
+                        interval: 2,
+                        getTitlesWidget: (value, meta) {
+                          if (value == meta.max) return const SizedBox.shrink();
+                          
+                          return Padding(
+                            padding: const EdgeInsets.only(right: 8.0),
+                            child: Text(
+                              value.toStringAsFixed(0),
+                              style: const TextStyle(
+                                color: Colors.white70,
+                                fontSize: 12,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                    rightTitles: AxisTitles(
+                      sideTitles: SideTitles(showTitles: false),
+                    ),
+                    topTitles: AxisTitles(
+                      sideTitles: SideTitles(showTitles: false),
+                    ),
+                  ),
+                  gridData: FlGridData(
+                    show: true,
+                    drawVerticalLine: true,
+                    horizontalInterval: 1,
+                    verticalInterval: 1,
+                    getDrawingHorizontalLine: (value) {
+                      return FlLine(
+                        color: Colors.white10,
+                        strokeWidth: 0.5,
+                      );
+                    },
+                    getDrawingVerticalLine: (value) {
+                      return FlLine(
+                        color: Colors.white10,
+                        strokeWidth: 0.5,
+                      );
+                    },
+                  ),
+                  borderData: FlBorderData(
+                    show: true,
+                    border: Border.all(color: Colors.white24),
+                  ),
+                  barGroups: List.generate(totalIntervals, (index) {
+                    final scheduledTime = scheduledTimeByPeriod[index] ?? 0;
+                    final completedTime = completedTimeByPeriod[index] ?? 0;
+
+                    return BarChartGroupData(
+                      x: index,
+                      barRods: [
+                        // 예상 실행 시간 막대 (뒤에 배치)
+                        BarChartRodData(
+                          toY: scheduledTime,
+                          color: TimeTrekTheme.vitaflowBrandColor.withOpacity(0.3),
+                          width: 16,
+                          borderRadius: const BorderRadius.only(
+                            topLeft: Radius.circular(4),
+                            topRight: Radius.circular(4),
+                          ),
+                        ),
+                        // 실제 실행 시간 막대 (앞에 배치)
+                        BarChartRodData(
+                          toY: completedTime,
+                          color: TimeTrekTheme.proudMomentColor.withOpacity(0.8),
+                          width: 12, // 약간 더 좁게 만들어서 뒤의 막대가 보이도록 함
+                          borderRadius: const BorderRadius.only(
+                            topLeft: Radius.circular(4),
+                            topRight: Radius.circular(4),
+                          ),
+                        ),
+                      ],
+                    );
+                  }),
+                ),
               ),
             ),
           ),
-          lineBarsData: [
-            // 목표 라인
-            LineChartBarData(
-              spots: targetLine,
-              color: Colors.blue,
-              dotData: FlDotData(show: false),
-              isCurved: true,
-            ),
-            // 실제 진행 라인
-            LineChartBarData(
-              spots: successLine,
-              color: Colors.green,
-              dotData: FlDotData(show: false),
-              isCurved: true,
-            ),
-          ],
         ),
-      ),
+      ],
+    );
+  }
+
+  Widget _buildLegendItem(String title, Color color) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 16,
+          height: 16,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: color,
+          ),
+        ),
+        const SizedBox(width: 4),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+          decoration: BoxDecoration(
+            color: Colors.black45,
+            borderRadius: BorderRadius.circular(4),
+          ),
+          child: Text(
+            title,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 12,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ),
+      ],
     );
   }
 }
 
-class ProgressLineChartCheckList extends StatelessWidget {
+class ProgressBarChartCheckList extends StatelessWidget {
   final List<ActionEventData> actionEvents;
   final DateTime startTime;
   final DateTime endTime;
 
-  const ProgressLineChartCheckList({
+  const ProgressBarChartCheckList({
     Key? key,
     required this.actionEvents,
     required this.startTime,
@@ -752,19 +1063,15 @@ class ProgressLineChartCheckList extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // 지연된 액션 필터링
-    final delayedActions = actionEvents.where((event) {
-      final isInTimeRange = event.startTime.isAfter(startTime) && 
-                          event.endTime.isBefore(endTime);
-      final isPastDue = event.endTime.isBefore(DateTime.now());
-      final isNotCompleted = event.actionStatus != 'completed';
-      
-      return isInTimeRange && isPastDue && isNotCompleted;
+    // 시간 범위 내의 액션들을 필터링
+    final filteredActions = actionEvents.where((event) {
+      return event.startTime.isAfter(startTime) && 
+             event.endTime.isBefore(endTime);
     }).toList();
 
     // 목표별로 그룹화
     final groupedByGoal = <String, List<ActionEventData>>{};
-    for (var action in delayedActions) {
+    for (var action in filteredActions) {
       groupedByGoal.putIfAbsent(action.goalName, () => []).add(action);
     }
 
@@ -777,12 +1084,62 @@ class ProgressLineChartCheckList extends StatelessWidget {
         final actions = groupedByGoal[goalName]!;
         
         return ExpansionTile(
-          title: Text(goalName),
-          children: actions.map((action) => ListTile(
-            title: Text(action.actionName),
-            subtitle: Text('상태: ${action.actionStatus}'),
-            trailing: Text('${action.actionExecutionTime}시간'),
-          )).toList(),
+          title: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Flexible(
+                child: Text(
+                  goalName,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Text(
+                '(${actions.length}개 액션)',
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+            ],
+          ),
+          children: [
+            ListView.builder(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              itemCount: actions.length,
+              itemBuilder: (context, actionIndex) {
+                final action = actions[actionIndex];
+                final progress = action.actionStatus == 'completed' ? 1.0 : 0.0;
+                
+                return ListTile(
+                  title: Text(action.actionName),
+                  subtitle: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      LinearProgressIndicator(
+                        value: progress,
+                        backgroundColor: Colors.grey[300],
+                        valueColor: AlwaysStoppedAnimation<Color>(
+                          progress == 1.0 ? Colors.green : Colors.blue,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        '상태: ${action.actionStatus} • 예상 시간: ${action.actionExecutionTime}시간',
+                        style: Theme.of(context).textTheme.bodySmall,
+                      ),
+                    ],
+                  ),
+                  trailing: Icon(
+                    action.actionStatus == 'completed' 
+                        ? Icons.check_circle 
+                        : Icons.pending,
+                    color: action.actionStatus == 'completed'
+                        ? Colors.green
+                        : Colors.grey,
+                  ),
+                );
+              },
+            ),
+          ],
         );
       },
     );
@@ -834,16 +1191,20 @@ class ExecutionTimePieChart extends StatelessWidget {
     final sections = actionTimes.entries.toList().asMap().entries.map((entry) {
       final index = entry.key;
       final actionTime = entry.value;
-      final color = Colors.primaries[index % Colors.primaries.length];
+      final colors = [
+        TimeTrekTheme.vitaflowBrandColor,
+        TimeTrekTheme.successColor,
+        TimeTrekTheme.alertColor,
+        TimeTrekTheme.proudMomentColor,
+      ];
+      final color = colors[index % colors.length];
+      
       return PieChartSectionData(
         value: actionTime.value,
         title: '${index + 1}',
         color: color,
         radius: 100,
-        titleStyle: const TextStyle(
-          color: Colors.white,
-          fontWeight: FontWeight.bold,
-        ),
+        titleStyle: Theme.of(context).textTheme.titleSmall,
       );
     }).toList();
 
