@@ -1313,34 +1313,82 @@ class ExecutionTimePieChart extends StatelessWidget {
       );
     }
 
+    // 색상 리스트를 20개로 확장
+    final colors = [
+      TimeTrekTheme.vitaflowBrandColor,
+      TimeTrekTheme.successColor,
+      TimeTrekTheme.alertColor,
+      TimeTrekTheme.proudMomentColor,
+      const Color(0xFF845EC2), // 보라색
+      const Color(0xFFD65DB1), // 분홍색
+      const Color(0xFF4B4453), // 진회색
+      const Color(0xFFFF9671), // 연한 주황색
+      const Color(0xFFFFC75F), // 밝은 노란색
+      const Color(0xFF008F7A), // 청록색
+      const Color(0xFF0089BA), // 하늘색
+      const Color(0xFFC34A36), // 붉은 갈색
+      const Color(0xFF5B8C5A), // 초록색
+      const Color(0xFFBC6C25), // 갈색
+      const Color(0xFF6B4E71), // 자주색
+      const Color(0xFF2D6A4F), // 진초록색
+      const Color(0xFF9B2226), // 와인색
+      const Color(0xFF48BFE3), // 밝은 파랑
+      const Color(0xFF774936), // 다크 브라운
+      const Color(0xFF6930C3), // 진보라색
+    ];
+
     // 파이 차트 섹션 데이터 생성
     final sections = actionTimes.entries.toList().asMap().entries.map((entry) {
       final index = entry.key;
       final actionTime = entry.value;
-      final colors = [
-        TimeTrekTheme.vitaflowBrandColor,
-        TimeTrekTheme.successColor,
-        TimeTrekTheme.alertColor,
-        TimeTrekTheme.proudMomentColor,
-      ];
       final color = colors[index % colors.length];
       
       return PieChartSectionData(
         value: actionTime.value,
         title: '${index + 1}',
         color: color,
-        radius: 100,
+        radius: 80,
         titleStyle: Theme.of(context).textTheme.titleSmall,
       );
     }).toList();
 
-    return SizedBox(
-      height: 300,
-      child: PieChart(
-        PieChartData(
-          sections: sections,
-          centerSpaceRadius: 40,
-          sectionsSpace: 2,
+    // 총 시간 계산
+    double totalTime = actionTimes.values.fold(0, (sum, time) => sum + time);
+
+    return Card(
+      margin: const EdgeInsets.all(8.0),
+      child: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: AspectRatio(
+          aspectRatio: 1.5,
+          child: Stack(
+            alignment: Alignment.center,
+            children: [
+              PieChart(
+                PieChartData(
+                  sections: sections,
+                  centerSpaceRadius: 50,
+                  sectionsSpace: 2,
+                  startDegreeOffset: -90,
+                ),
+              ),
+              Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    '총 시간',
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                  Text(
+                    '${totalTime.toStringAsFixed(1)}h',
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -1376,39 +1424,103 @@ class ExecutionTimePieChartList extends StatelessWidget {
       final isNotExcluded = !noActionStatus.contains(event.actionStatus);
       
       return isInTimeRange && isInTimegroup && hasTag && isNotExcluded;
-    }).toList();
+    }).toList()
+      ..sort((a, b) => b.startTime.compareTo(a.startTime));
 
-    // 액션별 실행 시간 합계 계산
-    final actionTimes = <String, double>{};
-    double totalTime = 0;
+    // 액션별로 그룹화
+    final groupedByAction = <String, List<ActionEventData>>{};
     for (var event in filteredEvents) {
-      actionTimes.update(
-        event.actionName,
-        (value) => value + event.actionExecutionTime,
-        ifAbsent: () => event.actionExecutionTime,
-      );
-      totalTime += event.actionExecutionTime;
+      groupedByAction.putIfAbsent(event.actionName, () => []).add(event);
     }
 
-    // 실행 시간 비율로 정렬
-    final sortedActions = actionTimes.entries.toList()
-      ..sort((a, b) => b.value.compareTo(a.value));
+    // 색상 리스트를 20개로 확장
+    final colors = [
+      TimeTrekTheme.vitaflowBrandColor,
+      TimeTrekTheme.successColor,
+      TimeTrekTheme.alertColor,
+      TimeTrekTheme.proudMomentColor,
+      const Color(0xFF845EC2), // 보라색
+      const Color(0xFFD65DB1), // 분홍색
+      const Color(0xFF4B4453), // 진회색
+      const Color(0xFFFF9671), // 연한 주황색
+      const Color(0xFFFFC75F), // 밝은 노란색
+      const Color(0xFF008F7A), // 청록색
+      const Color(0xFF0089BA), // 하늘색
+      const Color(0xFFC34A36), // 붉은 갈색
+      const Color(0xFF5B8C5A), // 초록색
+      const Color(0xFFBC6C25), // 갈색
+      const Color(0xFF6B4E71), // 자주색
+      const Color(0xFF2D6A4F), // 진초록색
+      const Color(0xFF9B2226), // 와인색
+      const Color(0xFF48BFE3), // 밝은 파랑
+      const Color(0xFF774936), // 다크 브라운
+      const Color(0xFF6930C3), // 진보라색
+    ];
 
     return ListView.builder(
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
-      itemCount: sortedActions.length,
+      itemCount: groupedByAction.length,
       itemBuilder: (context, index) {
-        final action = sortedActions[index];
-        final percentage = (action.value / totalTime * 100).toStringAsFixed(1);
+        final actionName = groupedByAction.keys.elementAt(index);
+        final events = groupedByAction[actionName]!;
+        final color = colors[index % colors.length];
         
-        return ListTile(
-          leading: CircleAvatar(
-            backgroundColor: Colors.primaries[index % Colors.primaries.length],
-            child: Text('${index + 1}'),
+        return ExpansionTile(
+          title: Row(
+            children: [
+              Container(
+                width: 24,
+                height: 24,
+                decoration: BoxDecoration(
+                  color: color,
+                  shape: BoxShape.circle,
+                ),
+                child: Center(
+                  child: Text(
+                    '${index + 1}',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(child: Text(actionName)),
+            ],
           ),
-          title: Text(action.key),
-          trailing: Text('$percentage% (${action.value}시간)'),
+          children: events.map((event) => ListTile(
+            title: Text(DateFormat('MM/dd HH:mm').format(event.startTime)),
+            subtitle: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('상태: ${event.actionStatus}'),
+                if (event.actionStatusDescription != null)
+                  Text('설명: ${event.actionStatusDescription}'),
+              ],
+            ),
+            trailing: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text('${event.actionExecutionTime}시간'),
+                if (event.attachedImage != null)
+                  IconButton(
+                    icon: const Icon(Icons.image),
+                    onPressed: () {
+                      // TODO: 이미지 보기 기능 구현
+                    },
+                  ),
+                if (event.attachedFile != null)
+                  IconButton(
+                    icon: const Icon(Icons.file_present),
+                    onPressed: () {
+                      // TODO: 파일 다운로드 기능 구현
+                    },
+                  ),
+              ],
+            ),
+          )).toList(),
         );
       },
     );
