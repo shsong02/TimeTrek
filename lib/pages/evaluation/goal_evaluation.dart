@@ -10,6 +10,9 @@ import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'dart:html' if (dart.library.html) 'dart:html' as html;
+import 'widgets/progress_charts.dart';
+import 'widgets/execution_charts.dart';
+import 'widgets/action_history.dart';
 
 
 // 데이터 모델
@@ -350,7 +353,16 @@ class _InsightDailySummaryWidgetState extends State<InsightDailySummaryWidget> {
             onHideCompletedChanged: (value) => setState(() => hideCompleted = value),
           ),
           
-          // AI 분석 위젯을 필터 다음으로 이동
+          // 이메일 리포트 위젯 추가
+          EmailReportWidget(
+            reportType: 'daily',
+            actionEvents: widget.actionEvents,
+            selectedTags: selectedTags,
+            hideCompleted: hideCompleted,
+            startTime: todayStart,
+            endTime: todayEnd,
+          ),
+          
           AIAnalysisWidget(
             type: 'daily',
             events: widget.actionEvents,
@@ -900,850 +912,6 @@ class _InsightMonthlySummaryWidgetState extends State<InsightMonthlySummaryWidge
   }
 }
 
-class ProgressBarChart extends StatelessWidget {
-  final List<ActionEventData> actionEvents;
-  final DateTime startTime;
-  final DateTime endTime;
-  final String timegroup;
-  final List<String> tag;
-  final List<String> noActionStatus;
-
-  const ProgressBarChart({
-    Key? key,
-    required this.actionEvents,
-    required this.startTime,
-    required this.endTime,
-    required this.timegroup,
-    required this.tag,
-    required this.noActionStatus,
-  }) : super(key: key);
-
-
-  @override
-  Widget build(BuildContext context) {
-    // 시간 간격 계산 수정
-    final totalDuration = endTime.difference(startTime);
-    final isWithinDay = totalDuration.inHours <= 24;
-    final intervalDuration = isWithinDay 
-        ? const Duration(hours: 2)  // 2시간 단위
-        : totalDuration.inDays <= 7 
-            ? const Duration(days: 1)  // 1일 단위
-            : const Duration(days: 2);  // 2일 단위
-
-    // 전체 구간 수 계산 수정
-    final totalIntervals = isWithinDay
-        ? 12  // 24시간을 2시간 간격으로 나누면 12개 구간
-        : totalDuration.inDays <= 7
-            ? totalDuration.inDays + 1
-            : (totalDuration.inDays / 2).ceil();
-
-    // 모든 구간에 대해 기본값 0으로 초기화
-    final Map<int, double> scheduledTimeByPeriod = {
-      for (var i = 0; i < totalIntervals; i++) i: 0
-    };
-    final Map<int, double> completedTimeByPeriod = {
-      for (var i = 0; i < totalIntervals; i++) i: 0
-    };
-    final Map<int, List<ActionEventData>> eventsByPeriod = {};
-
-    // 필터링된 이벤트에 대한 시간 계산
-    final filteredEvents = actionEvents.where((event) {
-      final isInTimeRange = event.startTime.isAfter(startTime) && 
-                          event.endTime.isBefore(endTime);
-      final isInTimegroup = timegroup.isEmpty || event.timegroup == timegroup;
-      final hasTag = tag.isEmpty || tag.any((t) => event.tags.contains(t));
-      final isNotExcluded = !noActionStatus.contains(event.actionStatus);
-      
-      return isInTimeRange && isInTimegroup && hasTag && isNotExcluded;
-    }).toList();
-
-    // 이벤트 시간 계산 및 할당 수정
-    for (var event in filteredEvents) {
-      var currentTime = event.startTime;
-      while (currentTime.isBefore(event.endTime)) {
-        final periodIndex = isWithinDay
-            ? currentTime.hour ~/ 2  // 2시간 단위로 인덱스 계산
-            : totalDuration.inDays <= 7
-                ? currentTime.difference(startTime).inDays
-                : currentTime.difference(startTime).inDays ~/ 2;
-
-        // 이벤트 목록 저장
-        eventsByPeriod.putIfAbsent(periodIndex, () => []).add(event);
-
-        // 실행 시간 계산 (구간에 걸쳐있는 시간만큼 분배)
-        final periodEnd = currentTime.add(intervalDuration);
-        final eventEndInPeriod = event.endTime.isBefore(periodEnd) 
-            ? event.endTime 
-            : periodEnd;
-        final durationInPeriod = eventEndInPeriod.difference(currentTime).inMinutes;
-        final totalDurationMinutes = event.endTime.difference(event.startTime).inMinutes;
-        final ratio = durationInPeriod / totalDurationMinutes;
-        final timeInPeriod = event.actionExecutionTime * ratio;
-
-        // 예정된 시간 업데이트
-        scheduledTimeByPeriod.update(
-          periodIndex,
-          (value) => value + timeInPeriod,
-          ifAbsent: () => timeInPeriod,
-        );
-
-        // 완료된 시간 업데이트
-        if (event.actionStatus == 'completed') {
-          completedTimeByPeriod.update(
-            periodIndex,
-            (value) => value + timeInPeriod,
-            ifAbsent: () => timeInPeriod,
-          );
-        }
-
-        currentTime = periodEnd;
-      }
-    }
-
-    return Column(
-      children: [
-        // 범례 추가
-        Padding(
-          padding: const EdgeInsets.all(8.0),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              _buildLegendItem('예상 실행 시간', TimeTrekTheme.vitaflowBrandColor),
-              const SizedBox(width: 16),
-              _buildLegendItem('실제 실행 시간', TimeTrekTheme.proudMomentColor),
-            ],
-          ),
-        ),
-        Container(
-          decoration: BoxDecoration(
-            color: Colors.grey[900],
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: AspectRatio(
-            aspectRatio: 2,
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: BarChart(
-                BarChartData(
-                  alignment: BarChartAlignment.spaceAround,
-                  maxY: scheduledTimeByPeriod.isEmpty ? 10 : 
-                        scheduledTimeByPeriod.values.reduce((a, b) => a > b ? a : b) * 1.2,
-                  barTouchData: BarTouchData(
-                    enabled: true,
-                    touchTooltipData: BarTouchTooltipData(
-                      tooltipBgColor: Colors.black87,
-                      getTooltipItem: (group, groupIndex, rod, rodIndex) {
-                        final periodEvents = eventsByPeriod[group.x.toInt()] ?? [];
-                        if (periodEvents.isEmpty) return null;
-
-                        final tooltipText = rodIndex == 0 
-                            ? '예정된 액션:\n' 
-                            : '완료된 액션:\n';
-                        
-                        final displayEvents = periodEvents.take(4).toList();
-                        final remainingCount = periodEvents.length - displayEvents.length;
-                        
-                        final tooltipContent = tooltipText + displayEvents
-                            .map((e) => '${e.actionName} (${e.actionExecutionTime}h)')
-                            .join('\n') +
-                            (remainingCount > 0 ? '\n외 $remainingCount개' : '');
-                        
-                        return BarTooltipItem(
-                          tooltipContent,
-                          const TextStyle(
-                            color: Colors.white,
-                            fontSize: 10,
-                          ),
-                        );
-                      },
-                    ),
-                  ),
-                  titlesData: FlTitlesData(
-                    show: true,
-                    bottomTitles: AxisTitles(
-                      sideTitles: SideTitles(
-                        showTitles: true,
-                        reservedSize: 28,
-                        getTitlesWidget: (value, meta) {
-                          if (isWithinDay) {
-                            final hour = startTime.add(Duration(hours: value.toInt() * 2)).hour;
-                            if (hour % 4 != 0) {
-                              return const SizedBox.shrink();
-                            }
-                            return Padding(
-                              padding: const EdgeInsets.only(top: 8.0),
-                              child: Text(
-                                '$hour시',
-                                style: const TextStyle(
-                                  color: Colors.white70,
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                            );
-                          } else if (totalDuration.inDays <= 7) {
-                            final date = startTime.add(Duration(days: value.toInt()));
-                            return Padding(
-                              padding: const EdgeInsets.only(top: 8.0),
-                              child: Text(
-                                DateFormat('E').format(date),
-                                style: const TextStyle(
-                                  color: Colors.white70,
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                            );
-                          } else {
-                            final date = startTime.add(Duration(days: value.toInt() * 2));
-                            if (date.day % 5 == 0) {
-                              return Padding(
-                                padding: const EdgeInsets.only(top: 8.0),
-                                child: Text(
-                                  '${date.day}일',
-                                  style: const TextStyle(
-                                    color: Colors.white70,
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-                              );
-                            }
-                          }
-                          return const SizedBox.shrink();
-                        },
-                      ),
-                    ),
-                    leftTitles: AxisTitles(
-                      sideTitles: SideTitles(
-                        showTitles: true,
-                        reservedSize: 40,
-                        interval: 2,
-                        getTitlesWidget: (value, meta) {
-                          if (value == meta.max) return const SizedBox.shrink();
-                          
-                          return Padding(
-                            padding: const EdgeInsets.only(right: 8.0),
-                            child: Text(
-                              value.toStringAsFixed(0),
-                              style: const TextStyle(
-                                color: Colors.white70,
-                                fontSize: 12,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                          );
-                        },
-                      ),
-                    ),
-                    rightTitles: AxisTitles(
-                      sideTitles: SideTitles(showTitles: false),
-                    ),
-                    topTitles: AxisTitles(
-                      sideTitles: SideTitles(showTitles: false),
-                    ),
-                  ),
-                  gridData: FlGridData(
-                    show: true,
-                    drawVerticalLine: true,
-                    horizontalInterval: 1,
-                    verticalInterval: 1,
-                    getDrawingHorizontalLine: (value) {
-                      return FlLine(
-                        color: Colors.white10,
-                        strokeWidth: 0.5,
-                      );
-                    },
-                    getDrawingVerticalLine: (value) {
-                      return FlLine(
-                        color: Colors.white10,
-                        strokeWidth: 0.5,
-                      );
-                    },
-                  ),
-                  borderData: FlBorderData(
-                    show: true,
-                    border: Border.all(color: Colors.white24),
-                  ),
-                  barGroups: List.generate(totalIntervals, (index) {
-                    final scheduledTime = scheduledTimeByPeriod[index] ?? 0;
-                    final completedTime = completedTimeByPeriod[index] ?? 0;
-
-                    return BarChartGroupData(
-                      x: index,
-                      barRods: [
-                        // 예상 실행 시간 막대 (뒤에 배치)
-                        BarChartRodData(
-                          toY: scheduledTime,
-                          color: TimeTrekTheme.vitaflowBrandColor.withOpacity(0.3),
-                          width: 16,
-                          borderRadius: const BorderRadius.only(
-                            topLeft: Radius.circular(4),
-                            topRight: Radius.circular(4),
-                          ),
-                        ),
-                        // 실제 실행 시간 막대 (앞에 배치)
-                        BarChartRodData(
-                          toY: completedTime,
-                          color: TimeTrekTheme.proudMomentColor.withOpacity(0.8),
-                          width: 12, // 약간 더 좁게 만들어서 뒤의 막대가 보이도록 함
-                          borderRadius: const BorderRadius.only(
-                            topLeft: Radius.circular(4),
-                            topRight: Radius.circular(4),
-                          ),
-                        ),
-                      ],
-                    );
-                  }),
-                ),
-              ),
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildLegendItem(String title, Color color) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Container(
-          width: 16,
-          height: 16,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            color: color,
-          ),
-        ),
-        const SizedBox(width: 4),
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-          decoration: BoxDecoration(
-            color: Colors.black45,
-            borderRadius: BorderRadius.circular(4),
-          ),
-          child: Text(
-            title,
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 12,
-              fontWeight: FontWeight.w500,
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class ProgressBarChartCheckList extends StatelessWidget {
-  final List<ActionEventData> actionEvents;
-  final DateTime startTime;
-  final DateTime endTime;
-
-  const ProgressBarChartCheckList({
-    Key? key,
-    required this.actionEvents,
-    required this.startTime,
-    required this.endTime,
-  }) : super(key: key);
-
-  @override
-  Widget build(BuildContext context) {
-    // 시간 범위 내의 액션들을 필터링
-    final filteredActions = actionEvents.where((event) {
-      return event.startTime.isAfter(startTime) && 
-             event.endTime.isBefore(endTime);
-    }).toList();
-
-    // 목표별로 그룹화
-    final groupedByGoal = <String, List<ActionEventData>>{};
-    for (var action in filteredActions) {
-      groupedByGoal.putIfAbsent(action.goalName, () => []).add(action);
-    }
-
-    return ListView.builder(
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      itemCount: groupedByGoal.length,
-      itemBuilder: (context, index) {
-        final goalName = groupedByGoal.keys.elementAt(index);
-        final actions = groupedByGoal[goalName]!;
-        
-        return ExpansionTile(
-          title: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Flexible(
-                child: Text(
-                  goalName,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-              const SizedBox(width: 8),
-              Text(
-                '(${actions.length}개 액션)',
-                style: Theme.of(context).textTheme.bodySmall,
-              ),
-            ],
-          ),
-          children: [
-            ListView.builder(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              itemCount: actions.length,
-              itemBuilder: (context, actionIndex) {
-                final action = actions[actionIndex];
-                final progress = action.actionStatus == 'completed' ? 1.0 : 0.0;
-                
-                return ListTile(
-                  title: Text(action.actionName),
-                  subtitle: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      LinearProgressIndicator(
-                        value: progress,
-                        backgroundColor: Colors.grey[300],
-                        valueColor: AlwaysStoppedAnimation<Color>(
-                          progress == 1.0 ? Colors.green : Colors.blue,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        '상태: ${action.actionStatus} • 예상 시간: ${action.actionExecutionTime}시간',
-                        style: Theme.of(context).textTheme.bodySmall,
-                      ),
-                    ],
-                  ),
-                  trailing: Icon(
-                    action.actionStatus == 'completed' 
-                        ? Icons.check_circle 
-                        : Icons.pending,
-                    color: action.actionStatus == 'completed'
-                        ? Colors.green
-                        : Colors.grey,
-                  ),
-                );
-              },
-            ),
-          ],
-        );
-      },
-    );
-  }
-}
-
-class ExecutionTimePieChart extends StatelessWidget {
-  final List<ActionEventData> actionEvents;
-  final DateTime startTime;
-  final DateTime endTime;
-  final String timegroup;
-  final List<String> tag;
-  final List<String> noActionStatus;
-
-  const ExecutionTimePieChart({
-    Key? key,
-    required this.actionEvents,
-    required this.startTime,
-    required this.endTime,
-    required this.timegroup,
-    required this.tag,
-    required this.noActionStatus,
-  }) : super(key: key);
-
-  @override
-  Widget build(BuildContext context) {
-    // 필터링된 이벤트 목록
-    final filteredEvents = actionEvents.where((event) {
-      final isInTimeRange = event.startTime.isAfter(startTime) && 
-                          event.endTime.isBefore(endTime);
-      final isInTimegroup = timegroup.isEmpty || event.timegroup == timegroup;
-      final hasTag = tag.isEmpty || tag.any((t) => event.tags.contains(t));
-      final isNotExcluded = !noActionStatus.contains(event.actionStatus);
-      
-      return isInTimeRange && isInTimegroup && hasTag && isNotExcluded;
-    }).toList();
-
-    // 액션별 실행 시간 합계 계산
-    final actionTimes = <String, double>{};
-    for (var event in filteredEvents) {
-      actionTimes.update(
-        event.actionName,
-        (value) => value + event.actionExecutionTime,
-        ifAbsent: () => event.actionExecutionTime,
-      );
-    }
-
-    // 색상 리스트를 20개로 확장
-    final colors = [
-      TimeTrekTheme.vitaflowBrandColor,
-      TimeTrekTheme.successColor,
-      TimeTrekTheme.alertColor,
-      TimeTrekTheme.proudMomentColor,
-      const Color(0xFF845EC2), // 보라색
-      const Color(0xFFD65DB1), // 분홍색
-      const Color(0xFF4B4453), // 진회색
-      const Color(0xFFFF9671), // 연한 주황색
-      const Color(0xFFFFC75F), // 밝은 노란색
-      const Color(0xFF008F7A), // 청록색
-      const Color(0xFF0089BA), // 하늘색
-      const Color(0xFFC34A36), // 붉은 갈색
-      const Color(0xFF5B8C5A), // 초록색
-      const Color(0xFFBC6C25), // 갈색
-      const Color(0xFF6B4E71), // 자주색
-      const Color(0xFF2D6A4F), // 진초록색
-      const Color(0xFF9B2226), // 와인색
-      const Color(0xFF48BFE3), // 밝은 파랑
-      const Color(0xFF774936), // 다크 브라운
-      const Color(0xFF6930C3), // 진보라색
-    ];
-
-    // 파이 차트 섹션 데이터 생성
-    final sections = actionTimes.entries.toList().asMap().entries.map((entry) {
-      final index = entry.key;
-      final actionTime = entry.value;
-      final color = colors[index % colors.length];
-      
-      return PieChartSectionData(
-        value: actionTime.value,
-        title: '${index + 1}',
-        color: color,
-        radius: 80,
-        titleStyle: Theme.of(context).textTheme.titleSmall,
-      );
-    }).toList();
-
-    // 총 시간 계산
-    double totalTime = actionTimes.values.fold(0, (sum, time) => sum + time);
-
-    return Card(
-      margin: const EdgeInsets.all(8.0),
-      child: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: AspectRatio(
-          aspectRatio: 1.5,
-          child: Stack(
-            alignment: Alignment.center,
-            children: [
-              PieChart(
-                PieChartData(
-                  sections: sections,
-                  centerSpaceRadius: 50,
-                  sectionsSpace: 2,
-                  startDegreeOffset: -90,
-                ),
-              ),
-              Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    '총 시간',
-                    style: Theme.of(context).textTheme.bodySmall,
-                  ),
-                  Text(
-                    '${totalTime.toStringAsFixed(1)}h',
-                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class ExecutionTimePieChartList extends StatelessWidget {
-  final List<ActionEventData> actionEvents;
-  final DateTime startTime;
-  final DateTime endTime;
-  final String timegroup;
-  final List<String> tag;
-  final List<String> noActionStatus;
-
-  const ExecutionTimePieChartList({
-    Key? key,
-    required this.actionEvents,
-    required this.startTime,
-    required this.endTime,
-    required this.timegroup,
-    required this.tag,
-    required this.noActionStatus,
-  }) : super(key: key);
-
-  @override
-  Widget build(BuildContext context) {
-    // 필터링된 이벤트 목록
-    final filteredEvents = actionEvents.where((event) {
-      final isInTimeRange = event.startTime.isAfter(startTime) && 
-                          event.endTime.isBefore(endTime);
-      final isInTimegroup = timegroup.isEmpty || event.timegroup == timegroup;
-      final hasTag = tag.isEmpty || tag.any((t) => event.tags.contains(t));
-      final isNotExcluded = !noActionStatus.contains(event.actionStatus);
-      
-      return isInTimeRange && isInTimegroup && hasTag && isNotExcluded;
-    }).toList()
-      ..sort((a, b) => b.startTime.compareTo(a.startTime));
-
-    // 액션별로 그룹화
-    final groupedByAction = <String, List<ActionEventData>>{};
-    for (var event in filteredEvents) {
-      groupedByAction.putIfAbsent(event.actionName, () => []).add(event);
-    }
-
-    // 색상 리스트를 20개로 확장
-    final colors = [
-      TimeTrekTheme.vitaflowBrandColor,
-      TimeTrekTheme.successColor,
-      TimeTrekTheme.alertColor,
-      TimeTrekTheme.proudMomentColor,
-      const Color(0xFF845EC2), // 보라색
-      const Color(0xFFD65DB1), // 분홍색
-      const Color(0xFF4B4453), // 진회색
-      const Color(0xFFFF9671), // 연한 주황색
-      const Color(0xFFFFC75F), // 밝은 노란색
-      const Color(0xFF008F7A), // 청록색
-      const Color(0xFF0089BA), // 하늘색
-      const Color(0xFFC34A36), // 붉은 갈색
-      const Color(0xFF5B8C5A), // 초록색
-      const Color(0xFFBC6C25), // 갈색
-      const Color(0xFF6B4E71), // 자주색
-      const Color(0xFF2D6A4F), // 진초록색
-      const Color(0xFF9B2226), // 와인색
-      const Color(0xFF48BFE3), // 밝은 파랑
-      const Color(0xFF774936), // 다크 브라운
-      const Color(0xFF6930C3), // 진보라색
-    ];
-
-    return ListView.builder(
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      itemCount: groupedByAction.length,
-      itemBuilder: (context, index) {
-        final actionName = groupedByAction.keys.elementAt(index);
-        final events = groupedByAction[actionName]!;
-        final color = colors[index % colors.length];
-        
-        return ExpansionTile(
-          title: Row(
-            children: [
-              Container(
-                width: 24,
-                height: 24,
-                decoration: BoxDecoration(
-                  color: color,
-                  shape: BoxShape.circle,
-                ),
-                child: Center(
-                  child: Text(
-                    '${index + 1}',
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(child: Text(actionName)),
-            ],
-          ),
-          children: events.map((event) => ListTile(
-            title: Text(DateFormat('MM/dd HH:mm').format(event.startTime)),
-            subtitle: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('상태: ${event.actionStatus}'),
-                if (event.actionStatusDescription != null)
-                  Text('설명: ${event.actionStatusDescription}'),
-              ],
-            ),
-            trailing: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text('${event.actionExecutionTime}시간'),
-                if (event.attachedImage != null)
-                  IconButton(
-                    icon: const Icon(Icons.image),
-                    onPressed: () {
-                      // TODO: 이미지 보기 기능 구현
-                    },
-                  ),
-                if (event.attachedFile != null)
-                  IconButton(
-                    icon: const Icon(Icons.file_present),
-                    onPressed: () {
-                      // TODO: 파일 다운로드 기능 구현
-                    },
-                  ),
-              ],
-            ),
-          )).toList(),
-        );
-      },
-    );
-  }
-}
-
-class ActionHistoryTimeline extends StatelessWidget {
-  final List<ActionEventData> actionEvents;
-  final DateTime startTime;
-  final DateTime endTime;
-  final String timegroup;
-  final List<String> tag;
-  final List<String> noActionStatus;
-
-  const ActionHistoryTimeline({
-    Key? key,
-    required this.actionEvents,
-    required this.startTime,
-    required this.endTime,
-    required this.timegroup,
-    required this.tag,
-    required this.noActionStatus,
-  }) : super(key: key);
-
-  @override
-  Widget build(BuildContext context) {
-    // 필터링된 이벤트 목록
-    final filteredEvents = actionEvents.where((event) {
-      final isInTimeRange = event.startTime.isAfter(startTime) && 
-                          event.endTime.isBefore(endTime);
-      final isInTimegroup = timegroup.isEmpty || event.timegroup == timegroup;
-      final hasTag = tag.isEmpty || tag.any((t) => event.tags.contains(t));
-      final isNotExcluded = !noActionStatus.contains(event.actionStatus);
-      
-      return isInTimeRange && isInTimegroup && hasTag && isNotExcluded;
-    }).toList()
-      ..sort((a, b) => a.startTime.compareTo(b.startTime));
-
-    return SizedBox(
-      height: 200,
-      child: ListView.builder(
-        scrollDirection: Axis.horizontal,
-        itemCount: filteredEvents.length,
-        itemBuilder: (context, index) {
-          final event = filteredEvents[index];
-          return Card(
-            margin: const EdgeInsets.all(8.0),
-            child: Container(
-              width: 150,
-              padding: const EdgeInsets.all(8.0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    DateFormat('MM/dd HH:mm').format(event.startTime),
-                    style: const TextStyle(fontSize: 12),
-                  ),
-                  Text(
-                    event.actionName,
-                    style: const TextStyle(fontWeight: FontWeight.bold),
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  Text('상태: ${event.actionStatus}'),
-                  Text('${event.actionExecutionTime}시간'),
-                  if (event.attachedImage != null || event.attachedFile != null)
-                    const Icon(Icons.attachment),
-                ],
-              ),
-            ),
-          );
-        },
-      ),
-    );
-  }
-}
-
-class ActionHistoryTimelineList extends StatelessWidget {
-  final List<ActionEventData> actionEvents;
-  final DateTime startTime;
-  final DateTime endTime;
-  final String timegroup;
-  final List<String> tag;
-  final List<String> noActionStatus;
-
-  const ActionHistoryTimelineList({
-    Key? key,
-    required this.actionEvents,
-    required this.startTime,
-    required this.endTime,
-    required this.timegroup,
-    required this.tag,
-    required this.noActionStatus,
-  }) : super(key: key);
-
-  @override
-  Widget build(BuildContext context) {
-    // 필터링된 이벤트 목록
-    final filteredEvents = actionEvents.where((event) {
-      final isInTimeRange = event.startTime.isAfter(startTime) && 
-                          event.endTime.isBefore(endTime);
-      final isInTimegroup = timegroup.isEmpty || event.timegroup == timegroup;
-      final hasTag = tag.isEmpty || tag.any((t) => event.tags.contains(t));
-      final isNotExcluded = !noActionStatus.contains(event.actionStatus);
-      
-      return isInTimeRange && isInTimegroup && hasTag && isNotExcluded;
-    }).toList()
-      ..sort((a, b) => b.startTime.compareTo(a.startTime));
-
-    // 액션별로 그룹화
-    final groupedByAction = <String, List<ActionEventData>>{};
-    for (var event in filteredEvents) {
-      groupedByAction.putIfAbsent(event.actionName, () => []).add(event);
-    }
-
-    return ListView.builder(
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      itemCount: groupedByAction.length,
-      itemBuilder: (context, index) {
-        final actionName = groupedByAction.keys.elementAt(index);
-        final events = groupedByAction[actionName]!;
-        
-        return ExpansionTile(
-          title: Text(actionName),
-          children: events.map((event) => ListTile(
-            title: Text(DateFormat('MM/dd HH:mm').format(event.startTime)),
-            subtitle: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('상태: ${event.actionStatus}'),
-                if (event.actionStatusDescription != null)
-                  Text('설명: ${event.actionStatusDescription}'),
-              ],
-            ),
-            trailing: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text('${event.actionExecutionTime}시간'),
-                if (event.attachedImage != null)
-                  IconButton(
-                    icon: const Icon(Icons.image),
-                    onPressed: () {
-                      // TODO: 이미지 보기 기능 구현
-                    },
-                  ),
-                if (event.attachedFile != null)
-                  IconButton(
-                    icon: const Icon(Icons.file_present),
-                    onPressed: () {
-                      // TODO: 파일 다운로드 기능 구현
-                    },
-                  ),
-              ],
-            ),
-          )).toList(),
-        );
-      },
-    );
-  }
-}
-
 // AI 분석 API 호출을 위한 서비스 클래스 추가
 class AIAnalysisService {
   static Future<String> getAnalysis({
@@ -1751,7 +919,7 @@ class AIAnalysisService {
     required List<ActionEventData> events,
     required Map<String, List<String>> detail,
   }) async {
-    final url = Uri.parse('https://shsong83.app.n8n.cloud/webhook-test/timetrek-goal-evaluation');
+    final url = Uri.parse('https://shsong83.app.n8n.cloud/webhook/timetrek-goal-evaluation');
     
     try {
       final response = await http.post(
@@ -2015,6 +1183,403 @@ ${output['tomorrow_issue_point']}
             ],
           ],
         ),
+      ),
+    );
+  }
+}
+
+// 이메일 전송 위젯 추가
+class EmailReportWidget extends StatefulWidget {
+  final String reportType; // 'daily', 'weekly', 'monthly'
+  final List<ActionEventData> actionEvents;
+  final List<String> selectedTags;
+  final bool hideCompleted;
+  final DateTime startTime;
+  final DateTime endTime;
+
+  const EmailReportWidget({
+    Key? key,
+    required this.reportType,
+    required this.actionEvents,
+    required this.selectedTags,
+    required this.hideCompleted,
+    required this.startTime,
+    required this.endTime,
+  }) : super(key: key);
+
+  @override
+  State<EmailReportWidget> createState() => _EmailReportWidgetState();
+}
+
+class _EmailReportWidgetState extends State<EmailReportWidget> {
+  final _emailController = TextEditingController();
+  bool _isSending = false;
+  bool _isExpanded = false;
+  String? _analysisResult;
+
+  String escapeHtml(String text) {
+    return text
+        .replaceAll('&', '&amp;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;')
+        .replaceAll('"', '&quot;')
+        .replaceAll("'", '&#039;');
+  }
+
+  Future<void> _sendEmail() async {
+    if (!_emailController.text.contains('@')) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('유효한 이메일 주소를 입력해주세요')),
+      );
+      return;
+    }
+
+    setState(() => _isSending = true);
+
+    try {
+      print('이메일 리포트 생성 시작...');
+      final htmlContent = await _generateHtmlReport();
+      
+      if (htmlContent == null) {
+        print('HTML 리포트 생성 실패');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('리포트 생성 중 오류가 발생했습니다')),
+          );
+        }
+        return;
+      }
+      
+      print('HTML 리포트 생성 완료, API 호출 시작...');
+      final url = Uri.parse('https://shsong83.app.n8n.cloud/webhook/timetrek-goal-evaluation-send-email');
+      
+      final response = await http.post(
+        url,
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'to': _emailController.text,
+          'subject': '${widget.reportType == 'daily' ? '[TimeTrek] 일간' : 
+                     widget.reportType == 'weekly' ? '[TimeTrek] 주간' : '[TimeTrek] 월간'} 목표 평가 리포트',
+          'html': htmlContent,
+        }),
+      );
+
+      print('API 응답 상태 코드: ${response.statusCode}');
+      if (response.statusCode == 200) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('리포트가 이메일로 전송되었습니다')),
+          );
+        }
+      } else {
+        print('API 오류 응답: ${response.body}');
+        throw Exception('이메일 전송 실패');
+      }
+    } catch (e) {
+      print('이메일 전송 중 오류 발생: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('이메일 전송 중 오류가 발생했습니다')),
+        );
+      }
+    } finally {
+      setState(() => _isSending = false);
+    }
+  }
+
+  Future<String?> _generateHtmlReport() async {
+    try {
+      // 데이터 준비
+      final filteredEvents = widget.actionEvents.where((e) => 
+        e.startTime.isAfter(widget.startTime) &&
+        e.endTime.isBefore(widget.endTime) &&
+        (widget.selectedTags.isEmpty || widget.selectedTags.any((tag) => e.tags.contains(tag))) &&
+        (!widget.hideCompleted || e.actionStatus != 'completed')
+      ).toList();
+
+      // 시간대별 데이터 계산
+      final timeGroups = <String, double>{};
+      for (var event in filteredEvents) {
+        final hours = event.actionExecutionTime / 60.0; // 분을 시간으로 변환
+        timeGroups[event.timegroup] = (timeGroups[event.timegroup] ?? 0) + hours;
+      }
+
+      // 진행률 계산
+      final completedCount = filteredEvents.where((e) => e.actionStatus == 'completed').length;
+      final totalCount = filteredEvents.length;
+      final progress = totalCount > 0 ? (completedCount / totalCount * 100) : 0;
+
+      print('데이터 준비 완료: ${filteredEvents.length}개 이벤트, ${timeGroups.length}개 시간대');
+
+      // AI 분석 결과 가져오기
+      String aiAnalysis = '';
+      try {
+        // 로컬 스토리지에서 AI 분석 결과 가져오기
+        final storageKey = 'ai_analysis_${widget.reportType}';
+        final savedData = html.window.localStorage[storageKey];
+        
+        if (savedData != null) {
+          final data = jsonDecode(savedData);
+          final output = data['parsed'] as Map<String, dynamic>;
+          
+          if (widget.reportType == 'daily') {
+            aiAnalysis = '''
+              <div class="card">
+                <h2 class="section-title">AI 분석</h2>
+                <div class="ai-analysis">
+                  <h3>오늘의 요약</h3>
+                  <p>${escapeHtml(output['today_summary'] ?? '')}</p>
+                  
+                  <h3>주의사항</h3>
+                  <p>${escapeHtml(output['today_issue_point'] ?? '')}</p>
+                  
+                  <h3>내일의 계획</h3>
+                  <p>${escapeHtml(output['tomorrow_summary'] ?? '')}</p>
+                  
+                  <h3>주의사항</h3>
+                  <p>${escapeHtml(output['tomorrow_issue_point'] ?? '')}</p>
+                </div>
+              </div>
+            ''';
+          }
+        } else {
+          aiAnalysis = '''
+            <div class="card">
+              <h2 class="section-title">AI 분석</h2>
+              <p style="color: #666;">AI 분석 결과가 없습니다. AI 분석을 먼저 실행해주세요.</p>
+            </div>
+          ''';
+        }
+      } catch (e) {
+        print('저장된 AI 분석 결과 가져오기 실패: $e');
+        aiAnalysis = '''
+          <div class="card">
+            <h2 class="section-title">AI 분석</h2>
+            <p style="color: #666;">저장된 AI 분석 결과를 가져오는 중 오류가 발생했습니다.</p>
+          </div>
+        ''';
+      }
+
+      final reportHtml = '''
+        <!DOCTYPE html>
+        <html lang="ko">
+        <head>
+          <meta charset="UTF-8">
+          <title>${widget.reportType == 'daily' ? '일간' : widget.reportType == 'weekly' ? '주간' : '월간'} 목표 평가 리포트</title>
+          <style>
+            body { 
+              font-family: -apple-system, BlinkMacSystemFont, sans-serif; 
+              line-height: 1.6; 
+              color: #333; 
+              margin: 0;
+              padding: 20px;
+              background-color: #f5f5f5;
+            }
+            .container {
+              max-width: 800px;
+              margin: 0 auto;
+            }
+            .card {
+              background: #fff;
+              border-radius: 8px;
+              box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+              margin-bottom: 20px;
+              padding: 20px;
+            }
+            .section-title {
+              color: #333;
+              border-bottom: 2px solid #eee;
+              padding-bottom: 10px;
+              margin-bottom: 20px;
+            }
+            .progress-container {
+              margin: 20px 0;
+            }
+            .progress-bar {
+              background: #e0e0e0;
+              border-radius: 4px;
+              height: 20px;
+              overflow: hidden;
+            }
+            .progress-fill {
+              background: #4CAF50;
+              height: 100%;
+              transition: width 0.3s ease;
+            }
+            .stats-grid {
+              display: grid;
+              grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+              gap: 20px;
+              margin: 20px 0;
+            }
+            .stat-card {
+              background: #f8f9fa;
+              padding: 15px;
+              border-radius: 8px;
+              text-align: center;
+            }
+            .ai-analysis h3 {
+              color: #2196F3;
+              margin-top: 20px;
+              margin-bottom: 10px;
+            }
+            .ai-analysis p {
+              color: #666;
+              margin-bottom: 15px;
+              line-height: 1.6;
+            }
+          </style>
+        </head>
+        <body>
+          <div class="container">
+            <h1 style="text-align: center; color: #2196F3;">일일 목표 평가 리포트</h1>
+            
+            <!-- AI 분석 결과 추가 -->
+            $aiAnalysis
+            
+            <div class="card">
+              <h2 class="section-title">시간대별 실행 시간</h2>
+              <div style="display: flex; justify-content: space-between; margin-bottom: 20px;">
+                <div style="flex: 1;">
+                  <table style="width: 100%; border-collapse: collapse;">
+                    <tr style="background-color: #f5f5f5;">
+                      <th style="padding: 12px; text-align: left; border: 1px solid #ddd;">시간</th>
+                      <th style="padding: 12px; text-align: left; border: 1px solid #ddd;">업무</th>
+                    </tr>
+                    ${([...filteredEvents]
+                      ..sort((a, b) => a.startTime.compareTo(b.startTime)))
+                      .map((e) => '''
+                        <tr>
+                          <td style="padding: 12px; border: 1px solid #ddd;">
+                            ${DateFormat('HH:mm').format(e.startTime)} - ${DateFormat('HH:mm').format(e.endTime)}
+                          </td>
+                          <td style="padding: 12px; border: 1px solid #ddd;">${escapeHtml(e.actionName)}</td>
+                        </tr>
+                      ''').join('')}
+                  </table>
+                </div>
+              </div>
+            </div>
+
+            <div class="card">
+              <h2 class="section-title">진행 상황 요약</h2>
+              <div class="progress-container">
+                <div class="progress-bar">
+                  <div class="progress-fill" style="width: ${progress}%"></div>
+                </div>
+                <p style="text-align: center;">
+                  전체 진행률: ${progress.toStringAsFixed(1)}% (${completedCount}/${totalCount})
+                </p>
+              </div>
+              
+              <div class="stats-grid">
+                <div class="stat-card">
+                  <h3>전체 액션</h3>
+                  <p style="font-size: 24px; font-weight: bold;">${totalCount}개</p>
+                </div>
+                <div class="stat-card">
+                  <h3>완료된 액션</h3>
+                  <p style="font-size: 24px; font-weight: bold;">${completedCount}개</p>
+                </div>
+              </div>
+            </div>
+
+            <div class="card">
+              <h2 class="section-title">액션 목록</h2>
+              <div style="max-height: 500px; overflow-y: auto;">
+                ${filteredEvents.map((e) => '''
+                  <div style="padding: 12px; border-bottom: 1px solid #eee; display: flex; align-items: center;">
+                    <span style="margin-right: 12px; font-size: 20px;">
+                      ${e.actionStatus == 'completed' ? '✅' : '⬜️'}
+                    </span>
+                    <div>
+                      <strong>${escapeHtml(e.actionName)}</strong>
+                      <br>
+                      <small style="color: #666;">
+                        ${escapeHtml(e.goalName)}
+                        ${e.tags.isNotEmpty ? '<br>태그: ${escapeHtml(e.tags.join(", "))}' : ''}
+                      </small>
+                    </div>
+                  </div>
+                ''').join('')}
+              </div>
+            </div>
+          </div>
+        </body>
+        </html>
+      ''';
+
+      print('HTML 리포트 생성 완료: ${reportHtml.length} 바이트');
+      return reportHtml;
+    } catch (e) {
+      print('HTML 리포트 생성 중 오류: $e');
+      return null;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      margin: const EdgeInsets.all(8.0),
+      child: ExpansionTile(
+        title: const Text(
+          '📧 리포트 이메일로 받기',
+          style: TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+        onExpansionChanged: (expanded) {
+          setState(() => _isExpanded = expanded);
+        },
+        children: [
+          Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: Row(
+              children: [
+                Expanded(
+                  child: SizedBox(
+                    height: 40, // 버튼 높이와 동일하게 설정
+                    child: TextField(
+                      controller: _emailController,
+                      decoration: const InputDecoration(
+                        hintText: '이메일 주소 입력',
+                        hintStyle: TextStyle(fontSize: 13),
+                        contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 0),
+                        border: OutlineInputBorder(),
+                      ),
+                      style: const TextStyle(fontSize: 13),
+                      keyboardType: TextInputType.emailAddress,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                SizedBox(
+                  height: 40,
+                  child: ElevatedButton.icon(
+                    onPressed: _isSending ? null : _sendEmail,
+                    icon: _isSending 
+                        ? const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(Icons.send, size: 16),
+                    label: Text(
+                      _isSending ? '전송 중...' : '전송하기',
+                      style: const TextStyle(fontSize: 13),
+                    ),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: TimeTrekTheme.vitaflowBrandColor,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
