@@ -171,16 +171,21 @@ Future<void> newCalendarEvent(BuildContext context) async {
 
       final splitCount = events.length;
       for (var i = 0; i < events.length; i++) {
-        final eventRef =
-            FirebaseFirestore.instance.collection('calendar_event').doc();
+        // calendar_event 문서 생성
+        final eventRef = FirebaseFirestore.instance.collection('calendar_event').doc();
         newBatch.set(eventRef, {
           ...events[i],
           'startTime': Timestamp.fromDate(events[i]['startTime'] as DateTime),
           'endTime': Timestamp.fromDate(events[i]['endTime'] as DateTime),
-          'reminder_timestamp':
-              Timestamp.fromDate(events[i]['reminder_timestamp'] as DateTime),
+          'reminder_timestamp': Timestamp.fromDate(events[i]['reminder_timestamp'] as DateTime),
           'action_split_count': splitCount,
           'action_split_num': i + 1,
+        });
+
+        // action의 상태를 'scheduled'로 업데이트
+        final actionRef = FirebaseFirestore.instance.collection('action_list').doc(events[i]['action_id']);
+        newBatch.update(actionRef, {
+          'action_status': 'scheduled'
         });
       }
     }
