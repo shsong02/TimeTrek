@@ -29,6 +29,10 @@ class ActionEventData {
   final DateTime endTime;
   final String? attachedImage;
   final String? attachedFile;
+  final int referenceImageCount;
+  final int referenceFileCount;
+  final List<String> referenceImageUrls;
+  final List<String> referenceFileUrls;
 
   ActionEventData({
     required this.actionId,
@@ -43,6 +47,10 @@ class ActionEventData {
     required this.endTime,
     this.attachedImage,
     this.attachedFile,
+    this.referenceImageCount = 0,
+    this.referenceFileCount = 0,
+    this.referenceImageUrls = const [],
+    this.referenceFileUrls = const [],
   });
 
   factory ActionEventData.fromMergedData(
@@ -60,6 +68,31 @@ class ActionEventData {
       endTime: (calendarEvent['endTime'] as Timestamp).toDate(),
       attachedImage: calendarEvent['attached_image'],
       attachedFile: calendarEvent['attached_file'],
+      referenceImageCount: calendarEvent['reference_image_count'] ?? 0,
+      referenceFileCount: calendarEvent['reference_file_count'] ?? 0,
+      referenceImageUrls: List<String>.from(calendarEvent['reference_image_urls'] ?? []),
+      referenceFileUrls: List<String>.from(calendarEvent['reference_file_urls'] ?? []),
+    );
+  }
+
+  factory ActionEventData.fromMap(Map<String, dynamic> map) {
+    return ActionEventData(
+      actionId: map['action_id'] ?? '',
+      actionName: map['action_name'] ?? '',
+      goalName: map['goal_name'] ?? '',
+      timegroup: map['timegroup'] ?? '',
+      tags: List<String>.from(map['goal_tag'] ?? []),
+      actionStatus: map['action_status'] ?? '',
+      actionStatusDescription: map['action_status_description'],
+      actionExecutionTime: map['action_execution_time'] ?? 0.0,
+      startTime: map['startTime'] != null ? DateTime.fromMillisecondsSinceEpoch(map['startTime']) : DateTime.fromMillisecondsSinceEpoch(0),
+      endTime: map['endTime'] != null ? DateTime.fromMillisecondsSinceEpoch(map['endTime']) : DateTime.fromMillisecondsSinceEpoch(0),
+      attachedImage: map['attached_image'],
+      attachedFile: map['attached_file'],
+      referenceImageCount: map['reference_image_count'] ?? 0,
+      referenceFileCount: map['reference_file_count'] ?? 0,
+      referenceImageUrls: List<String>.from(map['reference_image_urls'] ?? []),
+      referenceFileUrls: List<String>.from(map['reference_file_urls'] ?? []),
     );
   }
 }
@@ -91,7 +124,7 @@ class _GoalEvaluationState extends State<GoalEvaluation> {
 
   Future<void> _loadData() async {
     try {
-      // 캘린 이벤트와 액션 리스트 데이터 로드
+      // 캘린더 이벤트와 액션 리스트 데이터 로드
       final calendarSnapshot = await FirebaseFirestore.instance
           .collection('calendar_event')
           .get();
@@ -100,11 +133,27 @@ class _GoalEvaluationState extends State<GoalEvaluation> {
           .collection('action_list')
           .get();
 
-      // 액션 리스트를 맵으로 변환하여 빠른 조회 가능하게 함
+      // 액션 리스트를 맵으로 변환
       final actionMap = {
         for (var doc in actionSnapshot.docs)
           doc.data()['action_name']: doc.data()
       };
+
+      // 액션 히스토리 로드 및 레거시 데이터 처리
+      final historySnapshot = await FirebaseFirestore.instance
+          .collection('action_history')
+          .get();
+
+      // 레거시 데이터 삭제 처리
+      final batch = FirebaseFirestore.instance.batch();
+      for (var doc in historySnapshot.docs) {
+        final historyData = doc.data();
+        if (!actionMap.containsKey(historyData['action_name'])) {
+          // 레거시 데이터 삭제
+          batch.delete(doc.reference);
+        }
+      }
+      await batch.commit();
 
       // 데이터 병합
       final mergedData = calendarSnapshot.docs.map((doc) {
@@ -721,7 +770,7 @@ class _InsightWeeklySummaryWidgetState extends State<InsightWeeklySummaryWidget>
                             ),
                           ),
                           ActionHistoryTimeline(
-                            actionEvents: widget.actionEvents,
+                            actionHistories: widget.actionEvents,
                             startTime: week.start,
                             endTime: week.end,
                             timegroup: '',
@@ -729,7 +778,7 @@ class _InsightWeeklySummaryWidgetState extends State<InsightWeeklySummaryWidget>
                             noActionStatus: hideCompleted ? ['completed'] : [],
                           ),
                           ActionHistoryTimelineList(
-                            actionEvents: widget.actionEvents,
+                            actionHistories: widget.actionEvents,
                             startTime: week.start,
                             endTime: week.end,
                             timegroup: '',
@@ -885,7 +934,7 @@ class _InsightMonthlySummaryWidgetState extends State<InsightMonthlySummaryWidge
                   child: Column(
                     children: [
                       ActionHistoryTimeline(
-                        actionEvents: widget.actionEvents,
+                        actionHistories: widget.actionEvents,
                         startTime: monthStart,
                         endTime: monthEnd,
                         timegroup: '',
@@ -893,7 +942,7 @@ class _InsightMonthlySummaryWidgetState extends State<InsightMonthlySummaryWidge
                         noActionStatus: hideCompleted ? ['completed'] : [],
                       ),
                       ActionHistoryTimelineList(
-                        actionEvents: widget.actionEvents,
+                        actionHistories: widget.actionEvents,
                         startTime: monthStart,
                         endTime: monthEnd,
                         timegroup: '',
@@ -1584,3 +1633,49 @@ class _EmailReportWidgetState extends State<EmailReportWidget> {
     );
   }
 }
+
+// ActionHistory 데이터 모델 추가
+class ActionHistoryData {
+  final String actionId;
+  final String actionName;
+  final String goalName;
+  final DateTime timestamp;
+  final String actionStatus;
+  final String? actionStatusDescription;
+  final String? attachedImage;
+  final String? attachedFile;
+  final String? attachedImageName;
+  final String? attachedFileName;
+  final int actionExecutionTime;
+
+  ActionHistoryData({
+    required this.actionId,
+    required this.actionName,
+    required this.goalName,
+    required this.timestamp,
+    required this.actionStatus,
+    this.actionStatusDescription,
+    this.attachedImage,
+    this.attachedFile,
+    this.attachedImageName,
+    this.attachedFileName,
+    required this.actionExecutionTime,
+  });
+
+  factory ActionHistoryData.fromMap(Map<String, dynamic> map) {
+    return ActionHistoryData(
+      actionId: map['action_id'] ?? '',
+      actionName: map['action_name'] ?? '',
+      goalName: map['goal_name'] ?? '',
+      timestamp: (map['timestamp'] as Timestamp).toDate(),
+      actionStatus: map['action_status'] ?? '',
+      actionStatusDescription: map['action_status_description'],
+      attachedImage: map['attached_image'],
+      attachedFile: map['attached_file'],
+      attachedImageName: map['attached_image_name'],
+      attachedFileName: map['attached_file_name'],
+      actionExecutionTime: map['action_execution_time'] ?? 0,
+    );
+  }
+}
+
