@@ -7,6 +7,9 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:http/http.dart' as http;
 import 'package:flutter_markdown/flutter_markdown.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
+import 'dart:html' if (dart.library.html) 'dart:html' as html;
 
 
 // 데이터 모델
@@ -1803,6 +1806,68 @@ class _AIAnalysisWidgetState extends State<AIAnalysisWidget> {
   String? _analysisResult;
   Map<String, dynamic>? _parsedAnalysis;
   bool _isLoading = false;
+  DateTime? _lastAnalysisTime;
+
+  String _getStorageKey() => 'ai_analysis_${widget.type}';
+
+  @override
+  void initState() {
+    super.initState();
+    _loadSavedAnalysis();
+  }
+
+  bool _isAnalysisValid(DateTime analysisTime) {
+    final now = DateTime.now();
+    final difference = now.difference(analysisTime);
+    // 24시간 이내의 분석 결과만 유효
+    return difference.inHours < 24;
+  }
+
+  Future<void> _loadSavedAnalysis() async {
+    try {
+      final storage = html.window.localStorage;
+      final key = _getStorageKey();
+      final savedData = storage[key];
+      
+      if (savedData != null) {
+        final data = jsonDecode(savedData);
+        final analysisTime = DateTime.parse(data['timestamp']);
+        
+        if (_isAnalysisValid(analysisTime)) {
+          setState(() {
+            _analysisResult = data['result'];
+            _parsedAnalysis = data['parsed'];
+            _lastAnalysisTime = analysisTime;
+          });
+        } else {
+          // 유효기간이 지난 데이터는 삭제
+          storage.remove(key);
+        }
+      }
+    } catch (e) {
+      print('저장된 분석 결과 로드 중 오류: $e');
+    }
+  }
+
+  Future<void> _saveAnalysis(String result, Map<String, dynamic> parsed) async {
+    try {
+      final data = {
+        'result': result,
+        'parsed': parsed,
+        'timestamp': DateTime.now().toIso8601String(),
+      };
+      
+      html.window.localStorage[_getStorageKey()] = jsonEncode(data);
+      
+      setState(() {
+        _analysisResult = result;
+        _parsedAnalysis = parsed;
+        _lastAnalysisTime = DateTime.now();
+      });
+    } catch (e) {
+      print('분석 결과 저장 중 오류: $e');
+    }
+  }
 
   Future<void> _getAnalysis() async {
     setState(() => _isLoading = true);
@@ -1813,7 +1878,6 @@ class _AIAnalysisWidgetState extends State<AIAnalysisWidget> {
         detail: widget.detail,
       );
       
-      // JSON 파싱 및 마크다운 형식으로 변환
       final Map<String, dynamic> jsonResult = jsonDecode(result);
       final output = jsonResult['output'] as Map<String, dynamic>;
       
@@ -1834,20 +1898,35 @@ ${output['tomorrow_summary']}
 ${output['tomorrow_issue_point']}
 ''';
       }
-      // 다른 타입(weekly, monthly)에 대한 처리도 추가 가능
 
-      setState(() {
-        _analysisResult = markdownContent;
-        _parsedAnalysis = output;
-        _isLoading = false;
-      });
+      await _saveAnalysis(markdownContent, output);
     } catch (e) {
-      setState(() => _isLoading = false);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('분석 중 오류가 발생했습니다: $e')),
         );
       }
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
+  }
+
+  String _getTimeDisplay() {
+    if (_lastAnalysisTime == null) return '';
+    
+    final now = DateTime.now();
+    final difference = now.difference(_lastAnalysisTime!);
+    
+    if (difference.inMinutes < 1) {
+      return '방금 전';
+    } else if (difference.inHours < 1) {
+      return '${difference.inMinutes}분 전';
+    } else if (difference.inDays < 1) {
+      return '${difference.inHours}시간 전';
+    } else {
+      return DateFormat('MM/dd HH:mm').format(_lastAnalysisTime!);
     }
   }
 
@@ -1863,12 +1942,25 @@ ${output['tomorrow_issue_point']}
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                const Text(
-                  'AI 분석',
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                  ),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'AI 분석',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    if (_lastAnalysisTime != null)
+                      Text(
+                        '마지막 분석: ${_getTimeDisplay()}',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Colors.grey[600],
+                        ),
+                      ),
+                  ],
                 ),
                 ElevatedButton.icon(
                   onPressed: _isLoading ? null : _getAnalysis,
