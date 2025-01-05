@@ -8,8 +8,6 @@ import '/backend/app_state.dart';
 import 'package:syncfusion_flutter_calendar/calendar.dart';
 import 'dart:async'; // 추가
 import 'package:rxdart/rxdart.dart'; // rxdart 패키지 import 확인
-import 'package:google_fonts/google_fonts.dart';
-import 'package:markdown_widget/markdown_widget.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:firebase_storage/firebase_storage.dart';
@@ -17,11 +15,12 @@ import 'package:file_picker/file_picker.dart' show PlatformFile;
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'dart:typed_data'; // 추가
 import 'package:image/image.dart' as img; // 추가
-import 'package:image_picker/image_picker.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '/backend/backend.dart';
 import '/components/new_calendar_event.dart';
 import '/theme/time_trek_theme.dart'; // time_trek_theme 패키지 추가
+import '/components/file_storage_utils.dart';
 
 class ActionCalendar extends StatefulWidget {
   const ActionCalendar({
@@ -40,7 +39,7 @@ class ActionCalendar extends StatefulWidget {
 class _ActionCalendarState extends State<ActionCalendar> {
   late CalendarController _controller;
   StreamController<void>? _refreshController;
-  late Future<void> _initialDataFuture;
+  late Future<Map<String, dynamic>> _initialDataFuture;
   int _rotationAngle = 0;
   late TextEditingController _descriptionController;
   String markdownText = '';
@@ -61,8 +60,9 @@ class _ActionCalendarState extends State<ActionCalendar> {
     });
   }
 
-  Future<void> _loadInitialData() async {
+  Future<Map<String, dynamic>> _loadInitialData() async {
     await _checkAndUpdateEventStatus();
+    return {}; // 또는 필요한 초기 데이터를 반환
   }
 
   Future<void> _checkAndUpdateEventStatus() async {
@@ -1403,9 +1403,12 @@ class _ChangedActionEventWidgetState extends State<ChangedActionEventWidget> {
         await _handleCompleted();
       }
 
-      print('action_history 생성 시작');
-      await _createActionHistory();
-      print('action_history 생성 완료');
+      // dropped 상태가 아닐 때만 히스토리 생성
+      if (selectedStatus != 'dropped') {
+        print('action_history 생성 시작');
+        await _createActionHistory();
+        print('action_history 생성 완료');
+      }
 
       widget.refreshController.add(null);
       print('UI 업데이트 완료');
@@ -1484,34 +1487,15 @@ class _ChangedActionEventWidgetState extends State<ChangedActionEventWidget> {
         final imageCount = actionDoc.data()['reference_image_count'] ?? 0;
         final fileCount = actionDoc.data()['reference_file_count'] ?? 0;
 
-        // 파일이나 이미지가 존재하면 Google Storage에서 삭제
+        // 파일이나 이미지가 존재하면 삭제
         if (imageCount > 0 || fileCount > 0) {
           final uid = Provider.of<AppState>(context, listen: false).currentUser?.uid;
           if (uid != null) {
-            final safeGoalName = widget.event.goalName?.replaceAll(RegExp(r'[^a-zA-Z0-9가-힣]'), '_') ?? 'unknown';
-            final safeActionName = widget.event.actionName?.replaceAll(RegExp(r'[^a-zA-Z0-9가-힣]'), '_') ?? 'unknown';
-            final basePath = 'users/$uid/$safeGoalName/$safeActionName';
-            
-            try {
-              // 해당 action 폴더의 모든 내용 삭제
-              final storageRef = FirebaseStorage.instance.ref().child(basePath);
-              final result = await storageRef.listAll();
-              
-              // 모든 하위 항목 삭제
-              for (var prefix in result.prefixes) {
-                final subResult = await prefix.listAll();
-                for (var item in subResult.items) {
-                  await item.delete();
-                }
-              }
-              for (var item in result.items) {
-                await item.delete();
-              }
-              
-              print('Google Storage 파일 삭제 완료: $basePath');
-            } catch (e) {
-              print('Google Storage 파일 삭제 중 오류: $e');
-            }
+            await FileStorageUtils.deleteStorageFiles(
+              uid: uid,
+              goalName: widget.event.goalName ?? 'unknown',
+              actionName: widget.event.actionName ?? 'unknown',
+            );
           }
         }
 
@@ -1580,47 +1564,6 @@ class _ChangedActionEventWidgetState extends State<ChangedActionEventWidget> {
           'action_status': 'completed',
         });
       }
-
-      // 3. 이미지 및 파일 업로드
-      List<String> uploadedImageUrls = [];
-      List<String> uploadedFileUrls = [];
-
-      // 이미지 업로드
-      for (var image in selectedImages) {
-        final imageBytes = await image.readAsBytes();
-        final imagePath =
-            'action_images/${DateTime.now().millisecondsSinceEpoch}_${image.name}';
-        final imageRef = FirebaseStorage.instance.ref().child(imagePath);
-        await imageRef.putData(imageBytes);
-        final imageUrl = await imageRef.getDownloadURL();
-        uploadedImageUrls.add(imageUrl);
-      }
-
-      // 파일 업로드
-      for (var file in selectedFiles) {
-        final bytes = file.bytes;
-        if (bytes != null) {
-          final filePath =
-              'action_files/${DateTime.now().millisecondsSinceEpoch}_${file.name}';
-          final fileRef = FirebaseStorage.instance.ref().child(filePath);
-          await fileRef.putData(bytes);
-          final fileUrl = await fileRef.getDownloadURL();
-          uploadedFileUrls.add(fileUrl);
-        }
-      }
-
-      // 4. action_history 생성
-      await FirebaseFirestore.instance.collection('action_history').add({
-        'action_id': actionListQuery.docs.first.id,
-        'timestamp': FieldValue.serverTimestamp(),
-        'action_status': 'completed',
-        'action_name': widget.event.actionName,
-        'goal_name': widget.event.goalName,
-        'action_execution_time': widget.event.actionExecutionTime ?? 0.0,
-        'description': markdownText,
-        'attached_images': uploadedImageUrls,
-        'attached_files': uploadedFileUrls,
-      });
     } catch (e) {
       print('Error in _handleCompleted: $e');
       rethrow;
@@ -1630,31 +1573,48 @@ class _ChangedActionEventWidgetState extends State<ChangedActionEventWidget> {
 
   Future<void> _createActionHistory() async {
     print('=== _createActionHistory 시작 ===');
-    
-    // action_list 조회
-    final actionListQuery = await FirebaseFirestore.instance
-        .collection('action_list')
-        .where('action_name', isEqualTo: widget.event.actionName)
-        .get();
-    print('action_list 콜렉션 조회 (action_name=${widget.event.actionName}): ${actionListQuery.docs.length}개의 문서 로드됨');
+    try {
+      // action_list 조회
+      final actionListQuery = await FirebaseFirestore.instance
+          .collection('action_list')
+          .where('action_name', isEqualTo: widget.event.actionName)
+          .get();
+      print('action_list 콜렉션 조회 (action_name=${widget.event.actionName}): ${actionListQuery.docs.length}개의 문서 로드됨');
 
-    String? actionId;
-    if (actionListQuery.docs.isNotEmpty) {
-      actionId = actionListQuery.docs.first.id;
+      String? actionId;
+      if (actionListQuery.docs.isNotEmpty) {
+        actionId = actionListQuery.docs.first.id;
+      }
+
+      // 이미지와 파일 이름 추출
+      String? attachedImageName;
+      String? attachedFileName;
+      
+      if (selectedImages.isNotEmpty) {
+        attachedImageName = selectedImages.first.name;
+      }
+      if (selectedFiles.isNotEmpty) {
+        attachedFileName = selectedFiles.first.name;
+      }
+
+      // action_history 생성
+      await FirebaseFirestore.instance.collection('action_history').add({
+        'action_id': actionId ?? '',
+        'action_name': widget.event.actionName ?? '',
+        'goal_name': widget.event.goalName ?? '',
+        'timestamp': FieldValue.serverTimestamp(),
+        'action_status': selectedStatus ?? '',
+        'action_status_description': markdownText,
+        'attached_file': filePathsForHistory, // 전체 GS 경로
+        'attached_image': imagePathsForHistory, // 전체 GS 경로
+        'attached_image_name': attachedImageName ?? '',
+        'attached_file_name': attachedFileName ?? '',
+        'action_execution_time': widget.event.actionExecutionTime ?? 0,
+      });
+    } catch (e) {
+      print('Error in _createActionHistory: $e');
+      rethrow;
     }
-
-    // action_history 생성
-    await FirebaseFirestore.instance.collection('action_history').add({
-      'action_id': actionId ?? '',
-      'action_name': widget.event.actionName ?? '',
-      'goal_name': widget.event.goalName ?? '',
-      'timestamp': FieldValue.serverTimestamp(),
-      'action_status': selectedStatus ?? '',
-      'action_status_description': markdownText,
-      'attached_file': filePathsForHistory,
-      'attached_image': imagePathsForHistory,
-      'action_execution_time': widget.event.actionExecutionTime ?? 0.0,
-    });
     print('=== _createActionHistory 종료 ===\n');
   }
 
@@ -1677,47 +1637,6 @@ class _ChangedActionEventWidgetState extends State<ChangedActionEventWidget> {
           'action_status': 'pending',
         });
       }
-
-      // 3. 이미지 및 파일 업로드 (필요한 경우)
-      List<String> uploadedImageUrls = [];
-      List<String> uploadedFileUrls = [];
-
-      // 이미지 업로드
-      for (var image in selectedImages) {
-        final imageBytes = await image.readAsBytes();
-        final imagePath =
-            'action_images/${DateTime.now().millisecondsSinceEpoch}_${image.name}';
-        final imageRef = FirebaseStorage.instance.ref().child(imagePath);
-        await imageRef.putData(imageBytes);
-        final imageUrl = await imageRef.getDownloadURL();
-        uploadedImageUrls.add(imageUrl);
-      }
-
-      // 파일 업로드
-      for (var file in selectedFiles) {
-        final bytes = file.bytes;
-        if (bytes != null) {
-          final filePath =
-              'action_files/${DateTime.now().millisecondsSinceEpoch}_${file.name}';
-          final fileRef = FirebaseStorage.instance.ref().child(filePath);
-          await fileRef.putData(bytes);
-          final fileUrl = await fileRef.getDownloadURL();
-          uploadedFileUrls.add(fileUrl);
-        }
-      }
-
-      // 4. action_history 생성
-      await FirebaseFirestore.instance.collection('action_history').add({
-        'action_id': actionListQuery.docs.first.id,
-        'timestamp': FieldValue.serverTimestamp(),
-        'action_status': 'pending',
-        'action_name': widget.event.actionName,
-        'goal_name': widget.event.goalName,
-        'action_execution_time': widget.event.actionExecutionTime,
-        'description': markdownText,
-        'attached_images': uploadedImageUrls,
-        'attached_files': uploadedFileUrls,
-      });
     } catch (e) {
       print('Error in _handlePending: $e');
       rethrow;
@@ -1749,24 +1668,9 @@ class _ChangedActionEventWidgetState extends State<ChangedActionEventWidget> {
           'action_execution_time':
               widget.event.actionExecutionTime! + selectedHours!,
         });
-
-        // 4. action_history에 직접 로그 생성
-        await FirebaseFirestore.instance.collection('action_history').add({
-          'action_id': actionListQuery.docs.first.id,
-          'timestamp': FieldValue.serverTimestamp(),
-          'action_status': 'extended',
-          'action_name': widget.event.actionName,
-          'goal_name': widget.event.goalName,
-          'action_execution_time':
-              widget.event.actionExecutionTime! + selectedHours!,
-          'description': markdownText,
-          'extended_hours': selectedHours,
-          'original_end_time': widget.event.endTime,
-          'new_end_time': newEndTime,
-        });
       }
 
-      // 5. 캘린더 재배치가 선택된 경우
+      // 4. 캘린더 재배치가 선택된 경우
       if (rescheduleCalendar) {
         await newCalendarEvent(context);
       }
@@ -1872,42 +1776,25 @@ class _ChangedActionEventWidgetState extends State<ChangedActionEventWidget> {
   }
 
   Future<List<String>> _uploadImages() async {
-    print('=== _uploadImages 시작 ===');
     List<String> uploadedImageUrls = [];
-    List<String> storagePaths = [];
     
     try {
       final uid = Provider.of<AppState>(context, listen: false).currentUser?.uid;
       if (uid == null) throw Exception('사용자 ID를 찾을 수 없습니다.');
 
-      final safeGoalName = widget.event.goalName?.replaceAll(RegExp(r'[^a-zA-Z0-9가-힣]'), '_') ?? 'unknown';
-      final safeActionName = widget.event.actionName?.replaceAll(RegExp(r'[^a-zA-Z0-9가-힣]'), '_') ?? 'unknown';
-      final basePath = 'users/$uid/$safeGoalName/$safeActionName';
-      final storageRef = FirebaseStorage.instance.ref();
-
-      for (var image in selectedImages) {
-        final imageBytes = await image.readAsBytes();
-        final timestamp = DateTime.now().millisecondsSinceEpoch;
-        final safeFileName = '${timestamp}_${image.name.replaceAll(RegExp(r'[^a-zA-Z0-9._]'), '_')}';
-        final imagePath = '$basePath/images/$safeFileName';
-        storagePaths.add(imagePath);
-        
-        final metadata = SettableMetadata(
-          contentType: 'image/jpeg',
-          customMetadata: {
-            'uploadedBy': uid,
-            'uploadedAt': DateTime.now().toIso8601String(),
-          },
+      if (selectedImages.isNotEmpty) {
+        // 이미지 업로드
+        final result = await FileStorageUtils.uploadImage(
+          uid: uid,
+          goalName: widget.event.goalName ?? 'unknown',
+          actionName: widget.event.actionName ?? 'unknown',
+          image: selectedImages.first,
         );
         
-        final imageRef = storageRef.child(imagePath);
-        await imageRef.putData(imageBytes, metadata);
-        final imageUrl = await imageRef.getDownloadURL();
-        uploadedImageUrls.add(imageUrl);
-      }
+        imagePathsForHistory = result['gsPath'];
+        uploadedImageUrls.add(result['url']);
 
-      // action_list 업데이트
-      if (uploadedImageUrls.isNotEmpty) {
+        // action_list 문서 조회 및 업데이트
         final actionListQuery = await FirebaseFirestore.instance
             .collection('action_list')
             .where('action_name', isEqualTo: widget.event.actionName)
@@ -1915,59 +1802,46 @@ class _ChangedActionEventWidgetState extends State<ChangedActionEventWidget> {
 
         if (actionListQuery.docs.isNotEmpty) {
           final doc = actionListQuery.docs.first;
-          final currentData = doc.data();
-          final currentCount = currentData['reference_image_count'] ?? 0;
-          final currentUrls = List<String>.from(currentData['reference_image_urls'] ?? []);
+          final currentUrls = List<String>.from(doc.data()['reference_image_urls'] ?? []);
+          
+          // URL 추가 및 중복 제거
+          currentUrls.add(result['url']);
+          final uniqueUrls = currentUrls.toSet().toList();
 
           await doc.reference.update({
-            'reference_image_count': currentCount + uploadedImageUrls.length,
-            'reference_image_urls': [...currentUrls, ...uploadedImageUrls],
+            'reference_image_count': uniqueUrls.length,
+            'reference_image_urls': uniqueUrls,
           });
         }
       }
-
-      // 이미지 경로 문자열 반환을 위해 전역 변수에 저장
-      imagePathsForHistory = storagePaths.join(',');
-      
     } catch (e) {
       print('이미지 업로드 오류: $e');
       throw Exception('이미지 업로드 실패: $e');
     }
     
-    print('=== _uploadImages 종료 ===');
     return uploadedImageUrls;
   }
 
   Future<List<String>> _uploadFiles() async {
     List<String> uploadedFileUrls = [];
-    List<String> storagePaths = [];
     
     try {
       final uid = Provider.of<AppState>(context, listen: false).currentUser?.uid;
       if (uid == null) throw Exception('사용자 ID를 찾을 수 없습니다.');
 
-      final safeGoalName = widget.event.goalName?.replaceAll(RegExp(r'[^a-zA-Z0-9가-힣]'), '_') ?? 'unknown';
-      final safeActionName = widget.event.actionName?.replaceAll(RegExp(r'[^a-zA-Z0-9가-힣]'), '_') ?? 'unknown';
-      final basePath = 'users/$uid/$safeGoalName/$safeActionName';
-      final storageRef = FirebaseStorage.instance.ref();
-      
-      // 새 파일 업로드
-      for (var file in selectedFiles) {
-        if (file.bytes != null) {
-          final timestamp = DateTime.now().millisecondsSinceEpoch;
-          final safeFileName = '${timestamp}_${file.name.replaceAll(RegExp(r'[^a-zA-Z0-9._]'), '_')}';
-          final filePath = '$basePath/file/$safeFileName';
-          storagePaths.add(filePath);
-          
-          final fileRef = storageRef.child(filePath);
-          await fileRef.putData(file.bytes!);
-          final fileUrl = await fileRef.getDownloadURL();
-          uploadedFileUrls.add(fileUrl);
-        }
-      }
+      if (selectedFiles.isNotEmpty) {
+        // 파일 업로드
+        final result = await FileStorageUtils.uploadFile(
+          uid: uid,
+          goalName: widget.event.goalName ?? 'unknown',
+          actionName: widget.event.actionName ?? 'unknown',
+          file: selectedFiles.first,
+        );
+        
+        filePathsForHistory = result['gsPath'];
+        uploadedFileUrls.add(result['url']);
 
-      // action_list 업데이트
-      if (uploadedFileUrls.isNotEmpty) {
+        // action_list 문서 조회 및 업데이트
         final actionListQuery = await FirebaseFirestore.instance
             .collection('action_list')
             .where('action_name', isEqualTo: widget.event.actionName)
@@ -1975,20 +1849,18 @@ class _ChangedActionEventWidgetState extends State<ChangedActionEventWidget> {
 
         if (actionListQuery.docs.isNotEmpty) {
           final doc = actionListQuery.docs.first;
-          final currentData = doc.data();
-          final currentCount = currentData['reference_file_count'] ?? 0;
-          final currentUrls = List<String>.from(currentData['reference_file_urls'] ?? []);
+          final currentUrls = List<String>.from(doc.data()['reference_file_urls'] ?? []);
+          
+          // URL 추가 및 중복 제거
+          currentUrls.add(result['url']);
+          final uniqueUrls = currentUrls.toSet().toList();
 
           await doc.reference.update({
-            'reference_file_count': currentCount + uploadedFileUrls.length,
-            'reference_file_urls': [...currentUrls, ...uploadedFileUrls],
+            'reference_file_count': uniqueUrls.length,
+            'reference_file_urls': uniqueUrls,
           });
         }
       }
-
-      // 파일 경로 문자열 반환을 위해 전역 변수에 저장
-      filePathsForHistory = storagePaths.join(',');
-      
     } catch (e) {
       print('파일 업로드 오류: $e');
       throw Exception('파일 업로드 실패: $e');

@@ -12,6 +12,10 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:provider/provider.dart';
 import '../../backend/app_state.dart';
+import 'package:path_provider/path_provider.dart';
+import 'dart:io';
+import 'package:shared_preferences/shared_preferences.dart';  // 추가된 import
+import '../../components/file_storage_utils.dart';
 
 // 캘린더 관련 상수를 관리하는 클래스
 class CalendarConstants {
@@ -1141,8 +1145,8 @@ class _GoalCardState extends State<GoalCard> {
         final fileCount = actionData['reference_file_count'] ?? 0;
 
         if (imageCount > 0 || fileCount > 0) {
-          await deleteStorageFiles(
-            context: context,
+          await FileStorageUtils.deleteStorageFiles(
+            uid: Provider.of<AppState>(context, listen: false).currentUser!.uid,
             goalName: goal.name,
             actionName: actionData['action_name'],
           );
@@ -1545,24 +1549,40 @@ class _ActionCardState extends State<ActionCard> {
       
       final actionData = actionDoc.data();
       if (actionData != null) {
+        // Storage 파일 삭제 처리
         final imageCount = actionData['reference_image_count'] ?? 0;
         final fileCount = actionData['reference_file_count'] ?? 0;
 
-        // Storage 파일 삭제 처리
         if (imageCount > 0 || fileCount > 0) {
-          await deleteStorageFiles(
-            context: context,
+          await FileStorageUtils.deleteStorageFiles(
+            uid: Provider.of<AppState>(context, listen: false).currentUser!.uid,
             goalName: widget.action.goal_name,
             actionName: widget.action.action_name,
           );
         }
-      }
 
-      // Firestore에서 액션 문서 삭제
-      await FirebaseFirestore.instance
-          .collection('action_list')
-          .doc(widget.action.id)
-          .delete();
+        // action_history에서 관련 기록 삭제
+        final historySnapshot = await FirebaseFirestore.instance
+            .collection('action_history')
+            .where('action_name', isEqualTo: widget.action.action_name)
+            .get();
+
+        // 일괄 삭제를 위한 batch 작성
+        final batch = FirebaseFirestore.instance.batch();
+        
+        // action_history 문서들 삭제
+        for (var doc in historySnapshot.docs) {
+          batch.delete(doc.reference);
+        }
+        
+        // action_list에서 액션 문서 삭제
+        batch.delete(FirebaseFirestore.instance
+            .collection('action_list')
+            .doc(widget.action.id));
+
+        // batch 실행
+        await batch.commit();
+      }
 
       // 상위 위젯의 상태를 갱신
       final createActionState = context.findAncestorStateOfType<_CreateActionState>();
@@ -1798,8 +1818,8 @@ Future<List<Map<String, dynamic>>> calculateAvailableTimeSlots({
         .collection('timeslot')
         .where('startTime',
             isGreaterThanOrEqualTo: Timestamp.fromDate(startTime))
-        .where('startTime', isLessThanOrEqualTo: Timestamp.fromDate(endTime))
-        .get();
+            .where('startTime', isLessThanOrEqualTo: Timestamp.fromDate(endTime))
+            .get();
 
     final timeslotDocs = timeslotSnapshot.docs.map((doc) {
       final data = doc.data();
@@ -1939,44 +1959,5 @@ Future<Map<String, double>> _calculateAllRemainingTimes() async {
   } catch (e) {
     print('Error calculating remaining times: $e');
     return {};
-  }
-}
-
-// 새로운 유틸리티 메서드 추가
-Future<void> deleteStorageFiles({
-  required BuildContext context,
-  required String goalName,
-  String? actionName,
-}) async {
-  try {
-    final uid = Provider.of<AppState>(context, listen: false).currentUser?.uid;
-    if (uid == null) return;
-
-    final safeGoalName = goalName.replaceAll(RegExp(r'[^a-zA-Z0-9가-힣]'), '_');
-    String basePath = 'users/$uid/$safeGoalName';
-    
-    if (actionName != null) {
-      final safeActionName = actionName.replaceAll(RegExp(r'[^a-zA-Z0-9가-힣]'), '_');
-      basePath = '$basePath/$safeActionName';
-    }
-
-    // 해당 경로의 모든 내용 삭제
-    final storageRef = FirebaseStorage.instance.ref().child(basePath);
-    final result = await storageRef.listAll();
-    
-    // 모든 하위 항목 삭제
-    for (var prefix in result.prefixes) {
-      final subResult = await prefix.listAll();
-      for (var item in subResult.items) {
-        await item.delete();
-      }
-    }
-    for (var item in result.items) {
-      await item.delete();
-    }
-    
-    print('Google Storage 파일 삭제 완료: $basePath');
-  } catch (e) {
-    print('Google Storage 파일 삭제 중 오류: $e');
   }
 }

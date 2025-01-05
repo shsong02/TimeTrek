@@ -114,6 +114,7 @@ class GoalEvaluation extends StatefulWidget {
 
 class _GoalEvaluationState extends State<GoalEvaluation> {
   List<ActionEventData> _actionEvents = [];
+  List<ActionHistoryData> _actionHistories = [];
   bool _isLoading = true;
 
   @override
@@ -143,7 +144,6 @@ class _GoalEvaluationState extends State<GoalEvaluation> {
       final historySnapshot = await FirebaseFirestore.instance
           .collection('action_history')
           .get();
-
       // 레거시 데이터 삭제 처리
       final batch = FirebaseFirestore.instance.batch();
       for (var doc in historySnapshot.docs) {
@@ -162,8 +162,32 @@ class _GoalEvaluationState extends State<GoalEvaluation> {
         return ActionEventData.fromMergedData(calendarData, actionData);
       }).toList();
 
+      // 액션 이벤트 맵 생성 (action_id를 키로 사용)
+      final actionEventMap = {
+        for (var event in mergedData)
+          event.actionId: event
+      };
+
+      // 액션 히스토리 데이터 병합
+      final mergedHistories = historySnapshot.docs.map((doc) {
+        final historyData = doc.data();
+        final matchingEvent = actionEventMap[historyData['action_id']];
+        
+        // 기존 히스토리 데이터에 이벤트 데이터 병합
+        if (matchingEvent != null) {
+          historyData['startTime'] = matchingEvent.startTime;
+          historyData['endTime'] = matchingEvent.endTime;
+          historyData['timegroup'] = matchingEvent.timegroup;
+          historyData['tags'] = matchingEvent.tags;
+          historyData['action_status'] = matchingEvent.actionStatus;
+        }
+        
+        return ActionHistoryData.fromMap(historyData);
+      }).toList();
+
       setState(() {
         _actionEvents = mergedData;
+        _actionHistories = mergedHistories;
         _isLoading = false;
       });
     } catch (e) {
@@ -225,8 +249,11 @@ class _GoalEvaluationState extends State<GoalEvaluation> {
             child: TabBarView(
               children: [
                 InsightDailySummaryWidget(actionEvents: _actionEvents),
-                InsightWeeklySummaryWidget(actionEvents: _actionEvents),
-                InsightMonthlySummaryWidget(actionEvents: _actionEvents),
+                InsightWeeklySummaryWidget(
+                  actionEvents: _actionEvents,
+                  actionHistories: _actionHistories,
+                ),
+                InsightMonthlySummaryWidget(actionEvents: _actionEvents, actionHistories: _actionHistories),
               ],
             ),
           ),
@@ -544,10 +571,12 @@ class _InsightDailySummaryWidgetState extends State<InsightDailySummaryWidget> {
 
 class InsightWeeklySummaryWidget extends StatefulWidget {
   final List<ActionEventData> actionEvents;
+  final List<ActionHistoryData> actionHistories;
 
   const InsightWeeklySummaryWidget({
     Key? key,
     required this.actionEvents,
+    required this.actionHistories,
   }) : super(key: key);
 
   @override
@@ -770,7 +799,7 @@ class _InsightWeeklySummaryWidgetState extends State<InsightWeeklySummaryWidget>
                             ),
                           ),
                           ActionHistoryTimeline(
-                            actionHistories: widget.actionEvents,
+                            actionHistories: widget.actionHistories,
                             startTime: week.start,
                             endTime: week.end,
                             timegroup: '',
@@ -778,7 +807,7 @@ class _InsightWeeklySummaryWidgetState extends State<InsightWeeklySummaryWidget>
                             noActionStatus: hideCompleted ? ['completed'] : [],
                           ),
                           ActionHistoryTimelineList(
-                            actionHistories: widget.actionEvents,
+                            actionHistories: widget.actionHistories,
                             startTime: week.start,
                             endTime: week.end,
                             timegroup: '',
@@ -809,10 +838,12 @@ class WeekRange {
 
 class InsightMonthlySummaryWidget extends StatefulWidget {
   final List<ActionEventData> actionEvents;
+  final List<ActionHistoryData> actionHistories;
 
   const InsightMonthlySummaryWidget({
     Key? key,
     required this.actionEvents,
+    required this.actionHistories,
   }) : super(key: key);
 
   @override
@@ -822,6 +853,29 @@ class InsightMonthlySummaryWidget extends StatefulWidget {
 class _InsightMonthlySummaryWidgetState extends State<InsightMonthlySummaryWidget> {
   List<String> selectedTags = [];
   bool hideCompleted = false;
+  List<ActionHistoryData> _actionHistories = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _loadActionHistories();
+  }
+
+  Future<void> _loadActionHistories() async {
+    try {
+      final historySnapshot = await FirebaseFirestore.instance
+          .collection('action_history')
+          .get();
+
+      setState(() {
+        _actionHistories = historySnapshot.docs
+            .map((doc) => ActionHistoryData.fromMap(doc.data()))
+            .toList();
+      });
+    } catch (e) {
+      print('액션 히스토리 로드 중 오류 발생: $e');
+    }
+  }
 
   Map<String, List<String>> _getAIAnalysisDetail() {
     final now = DateTime.now();
@@ -934,7 +988,7 @@ class _InsightMonthlySummaryWidgetState extends State<InsightMonthlySummaryWidge
                   child: Column(
                     children: [
                       ActionHistoryTimeline(
-                        actionHistories: widget.actionEvents,
+                        actionHistories: widget.actionHistories,
                         startTime: monthStart,
                         endTime: monthEnd,
                         timegroup: '',
@@ -942,7 +996,7 @@ class _InsightMonthlySummaryWidgetState extends State<InsightMonthlySummaryWidge
                         noActionStatus: hideCompleted ? ['completed'] : [],
                       ),
                       ActionHistoryTimelineList(
-                        actionHistories: widget.actionEvents,
+                        actionHistories: widget.actionHistories,
                         startTime: monthStart,
                         endTime: monthEnd,
                         timegroup: '',
@@ -1646,7 +1700,11 @@ class ActionHistoryData {
   final String? attachedFile;
   final String? attachedImageName;
   final String? attachedFileName;
-  final int actionExecutionTime;
+  final double actionExecutionTime;
+  final DateTime? startTime;
+  final DateTime? endTime;
+  final String? timegroup;
+  final List<String> tags;
 
   ActionHistoryData({
     required this.actionId,
@@ -1660,6 +1718,10 @@ class ActionHistoryData {
     this.attachedImageName,
     this.attachedFileName,
     required this.actionExecutionTime,
+    this.startTime,
+    this.endTime,
+    this.timegroup,
+    this.tags = const [],
   });
 
   factory ActionHistoryData.fromMap(Map<String, dynamic> map) {
@@ -1674,7 +1736,11 @@ class ActionHistoryData {
       attachedFile: map['attached_file'],
       attachedImageName: map['attached_image_name'],
       attachedFileName: map['attached_file_name'],
-      actionExecutionTime: map['action_execution_time'] ?? 0,
+      actionExecutionTime: (map['action_execution_time'] ?? 0).toDouble(),
+      startTime: map['startTime'] is Timestamp ? (map['startTime'] as Timestamp).toDate() : null,
+      endTime: map['endTime'] is Timestamp ? (map['endTime'] as Timestamp).toDate() : null,
+      timegroup: map['timegroup'],
+      tags: List<String>.from(map['tags'] ?? []),
     );
   }
 }
