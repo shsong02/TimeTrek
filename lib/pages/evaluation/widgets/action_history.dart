@@ -11,6 +11,7 @@ import 'package:shared_preferences/shared_preferences.dart' as prefs;
 import '../../../components/file_storage_utils.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter_cache_manager/flutter_cache_manager.dart';
+import 'dart:html' as html;
 
 // ... ActionHistoryTimeline 클래스 전체
 // ... ActionHistoryTimelineList 클래스 전체
@@ -346,7 +347,8 @@ class ActionHistoryTimelineList extends StatelessWidget {
                               children: [
                                 Text(dateEntry.key,
                                     style: TextStyle(
-                                        fontSize: 14,
+                                        fontSize: 12,
+                                        color: Colors.grey[600],
                                         fontWeight: FontWeight.w600)),
                                 Container(
                                   height: 120,
@@ -441,6 +443,172 @@ class ActionHistoryTimelineList extends StatelessWidget {
                                     },
                                   ),
                                 ),
+                              ],
+                            );
+                          }).toList(),
+                        ],
+                      );
+                    }).toList(),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Container(
+            margin: const EdgeInsets.only(top: 16.0),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.1),
+                  spreadRadius: 2,
+                  blurRadius: 5,
+                  offset: Offset(0, 3),
+                ),
+              ],
+              borderRadius: BorderRadius.circular(8.0),
+            ),
+            padding: const EdgeInsets.all(8.0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 8.0),
+                  child: Text(
+                    '파일 뷰어',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      color: Theme.of(context).primaryColor.withOpacity(0.8),
+                    ),
+                    textAlign: TextAlign.left,
+                  ),
+                ),
+                Container(
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.1),
+                        spreadRadius: 2,
+                        blurRadius: 5,
+                        offset: Offset(0, 3),
+                      ),
+                    ],
+                    borderRadius: BorderRadius.circular(8.0),
+                  ),
+                  padding: const EdgeInsets.all(8.0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: groupedEvents.entries.map((goalEntry) {
+                      // 파일이 있는 이벤트만 필터링
+                      final eventsWithFiles =
+                          goalEntry.value.map((date, events) {
+                        return MapEntry(
+                          date,
+                          events
+                              .where((e) =>
+                                  e.attachedFileName?.isNotEmpty ?? false)
+                              .toList(),
+                        );
+                      })
+                            ..removeWhere((date, events) => events.isEmpty);
+
+                      if (eventsWithFiles.isEmpty)
+                        return const SizedBox.shrink();
+
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(goalEntry.key,
+                              style: TextStyle(
+                                  fontSize: 16, fontWeight: FontWeight.bold)),
+                          ...eventsWithFiles.entries.map((dateEntry) {
+                            return Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Padding(
+                                  padding: const EdgeInsets.only(top: 8.0),
+                                  child: Text(dateEntry.key,
+                                      style: TextStyle(
+                                          fontSize: 12,
+                                          color: Colors.grey[600],
+                                          fontWeight: FontWeight.w600)),
+                                ),
+                                ...dateEntry.value.map((event) => Padding(
+                                      padding: const EdgeInsets.symmetric(
+                                          vertical: 4.0),
+                                      child: ListTile(
+                                        title: Text(
+                                          event.actionName,
+                                          style: TextStyle(fontSize: 14),
+                                        ),
+                                        subtitle: Text(
+                                          DateFormat('HH:mm').format(
+                                              event.timestamp ??
+                                                  DateTime.now()),
+                                          style: TextStyle(fontSize: 12),
+                                        ),
+                                        trailing: TextButton(
+                                          onPressed: () async {
+                                            if (event.attachedFile != null) {
+                                              try {
+                                                final url =
+                                                    await FileStorageUtils
+                                                        .getActualImageUrl(event
+                                                            .attachedFile!);
+                                                if (url != null) {
+                                                  // 웹에서 직접 다운로드 링크 열기
+                                                  final anchor =
+                                                      html.AnchorElement(
+                                                          href: url)
+                                                        ..setAttribute(
+                                                            'download',
+                                                            event.attachedFileName ??
+                                                                'download')
+                                                        ..click();
+                                                } else {
+                                                  if (context.mounted) {
+                                                    ScaffoldMessenger.of(
+                                                            context)
+                                                        .showSnackBar(
+                                                      const SnackBar(
+                                                          content: Text(
+                                                              '파일을 다운로드할 수 없습니다')),
+                                                    );
+                                                  }
+                                                }
+                                              } catch (e) {
+                                                if (context.mounted) {
+                                                  ScaffoldMessenger.of(context)
+                                                      .showSnackBar(
+                                                    const SnackBar(
+                                                        content: Text(
+                                                            '파일 다운로드 중 오류가 발생했습니다')),
+                                                  );
+                                                }
+                                              }
+                                            }
+                                          },
+                                          child: Row(
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: [
+                                              Icon(Icons.download,
+                                                  size: 16, color: Colors.blue),
+                                              const SizedBox(width: 4),
+                                              Text(
+                                                event.attachedFileName ?? '',
+                                                style: const TextStyle(
+                                                  color: Colors.blue,
+                                                  decoration:
+                                                      TextDecoration.underline,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                      ),
+                                    )),
                               ],
                             );
                           }).toList(),
