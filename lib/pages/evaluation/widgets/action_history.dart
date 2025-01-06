@@ -9,7 +9,8 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:shared_preferences/shared_preferences.dart' as prefs;
 import '../../../components/file_storage_utils.dart';
-
+import 'package:cached_network_image/cached_network_image.dart';
+import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 // ... ActionHistoryTimeline 클래스 전체
 // ... ActionHistoryTimelineList 클래스 전체 
 class ActionHistoryTimeline extends StatelessWidget {
@@ -32,92 +33,125 @@ class ActionHistoryTimeline extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-      final filteredEvents = actionHistories.where((event) {
+    bool isExpanded = false; // 확장 상태를 추적하기 위한 변수
+
+    // filteredEvents 정의
+    final filteredEvents = actionHistories.where((event) {
       final isInTimeRange = (event.timestamp?.isBefore(endTime) ?? false) && 
-                          (event.timestamp?.isAfter(startTime) ?? false);
+                           (event.timestamp?.isAfter(startTime) ?? false);
       final isInTimegroup = timegroup.isEmpty || event.timegroup == timegroup;
       final hasTag = tag.isEmpty || tag.any((t) => event.tags.contains(t));
       final isNotExcluded = !noActionStatus.contains(event.actionStatus);
       
       return isInTimeRange && isInTimegroup && hasTag && isNotExcluded;
-    }).toList()
-      ..sort((a, b) => (b.timestamp ?? DateTime.now())
-          .compareTo(a.timestamp ?? DateTime.now()));
+    }).toList();
 
-    return SizedBox(
-      height: MediaQuery.of(context).size.height * 0.7,
-      child: Timeline.tileBuilder(
-        theme: TimelineThemeData(
-          nodePosition: 0,
-          connectorTheme: ConnectorThemeData(
-            thickness: 1.5,
-            color: Theme.of(context).dividerColor,
-          ),
-        ),
-        builder: TimelineTileBuilder.connected(
-          connectionDirection: ConnectionDirection.before,
-          itemCount: filteredEvents.length,
-          contentsBuilder: (_, index) {
-            final event = filteredEvents[index];
-            return Padding(
-              padding: const EdgeInsets.fromLTRB(12.0, 4.0, 8.0, 4.0),
-              child: Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(8.0),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        DateFormat('MM/dd HH:mm').format(event.timestamp ?? DateTime.now()),
-                        style: const TextStyle(fontSize: 11),
+    return StatefulBuilder(
+      builder: (context, setState) {
+        return Column(
+          children: [
+            AnimatedContainer(
+              duration: const Duration(milliseconds: 300),
+              height: isExpanded
+                  ? MediaQuery.of(context).size.height * 0.7
+                  : MediaQuery.of(context).size.height * 0.3, // 기본 높이 설정
+              child: SingleChildScrollView(
+                child: Container(
+                  height: isExpanded
+                      ? MediaQuery.of(context).size.height * 0.7
+                      : MediaQuery.of(context).size.height * 0.3, // 명시적인 높이 설정
+                  child: Timeline.tileBuilder(
+                    theme: TimelineThemeData(
+                      nodePosition: 0,
+                      connectorTheme: ConnectorThemeData(
+                        thickness: 1.5,
+                        color: Theme.of(context).dividerColor,
                       ),
-                      Text(
-                        event.goalName,
-                        style: const TextStyle(
-                          fontSize: 12,
-                          color: Colors.grey,
-                        ),
-                      ),
-                      Text(
-                        event.actionName,
-                        style: const TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      Text(
-                        '상태: ${event.actionStatus}',
-                        style: const TextStyle(fontSize: 11),
-                      ),
-                      if (event.actionStatusDescription?.isNotEmpty ?? false)
-                        Text(
-                          '설명: ${event.actionStatusDescription}',
-                          style: const TextStyle(fontSize: 11),
-                        ),
-                      Text(
-                        '소요시간: ${event.actionExecutionTime}시간',
-                        style: const TextStyle(fontSize: 11),
-                      ),
-                    ],
+                    ),
+                    builder: TimelineTileBuilder.connected(
+                      connectionDirection: ConnectionDirection.before,
+                      itemCount: filteredEvents.length,
+                      contentsBuilder: (_, index) {
+                        final event = filteredEvents[index];
+                        return Padding(
+                          padding: const EdgeInsets.fromLTRB(12.0, 4.0, 8.0, 4.0),
+                          child: Card(
+                            child: Padding(
+                              padding: const EdgeInsets.all(8.0),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Text(
+                                    DateFormat('MM/dd HH:mm').format(event.timestamp ?? DateTime.now()),
+                                    style: const TextStyle(fontSize: 11),
+                                  ),
+                                  Text(
+                                    event.goalName,
+                                    style: const TextStyle(
+                                      fontSize: 12,
+                                      color: Colors.grey,
+                                    ),
+                                  ),
+                                  Text(
+                                    event.actionName,
+                                    style: const TextStyle(
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                  Text(
+                                    '상태: ${event.actionStatus}',
+                                    style: const TextStyle(fontSize: 11),
+                                  ),
+                                  if (event.actionStatusDescription?.isNotEmpty ?? false)
+                                    Text(
+                                      '설명: ${event.actionStatusDescription}',
+                                      style: const TextStyle(fontSize: 11),
+                                    ),
+                                  Text(
+                                    '소요시간: ${event.actionExecutionTime}시간',
+                                    style: const TextStyle(fontSize: 11),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        );
+                      },
+                      indicatorBuilder: (_, index) {
+                        return DotIndicator(
+                          size: 20,
+                          color: Theme.of(context).primaryColor,
+                          child: const Icon(
+                            Icons.event_note,
+                            size: 14,
+                            color: Colors.white,
+                          ),
+                        );
+                      },
+                    ),
                   ),
                 ),
               ),
-            );
-          },
-          indicatorBuilder: (_, index) {
-            return DotIndicator(
-              size: 20,
-              color: Theme.of(context).primaryColor,
-              child: const Icon(
-                Icons.event_note,
-                size: 14,
-                color: Colors.white,
+            ),
+            GestureDetector(
+              onTap: () {
+                setState(() {
+                  isExpanded = !isExpanded; // 확장 상태 토글
+                });
+              },
+              child: Text(
+                isExpanded ? '축소' : '확장',
+                style: TextStyle(
+                  color: Theme.of(context).primaryColor,
+                  fontWeight: FontWeight.bold,
+                ),
               ),
-            );
-          },
-        ),
-      ),
+            ),
+          ],
+        );
+      },
     );
   }
 }
@@ -145,42 +179,22 @@ class ActionHistoryTimelineList extends StatelessWidget {
   }
 
   Widget _buildImageContent(String imageUrl) {
-    // 로컬 파일 처리
-    if (imageUrl.startsWith('file://')) {
-      return Image.file(
-        File(imageUrl.replaceFirst('file://', '')),
-        fit: BoxFit.cover,
-        cacheWidth: 300,
-        errorBuilder: (context, error, stackTrace) {
-          debugPrint('로컬 이미지 로딩 오류: $error');
-          return _buildImageError();
-        },
-      );
-    }
-
-    // 네트워크 이미지 처리
-    return Image.network(
-      imageUrl,
+    return CachedNetworkImage(
+      imageUrl: imageUrl,
       fit: BoxFit.cover,
-      cacheWidth: 300,
-      loadingBuilder: (context, child, loadingProgress) {
-        if (loadingProgress == null) return child;
-        return Center(
-          child: CircularProgressIndicator(
-            value: loadingProgress.expectedTotalBytes != null
-                ? loadingProgress.cumulativeBytesLoaded / loadingProgress.expectedTotalBytes!
-                : null,
-          ),
-        );
-      },
-      errorBuilder: (context, error, stackTrace) {
-        debugPrint('네트워크 이미지 로딩 오류:');
-        debugPrint('에러 타입: ${error.runtimeType}');
-        debugPrint('에러 메시지: $error');
-        debugPrint('URL: $imageUrl');
-        debugPrint('스택트레이스: $stackTrace');
-        
-        return _buildImageError();
+      cacheKey: imageUrl,
+      placeholder: (context, url) => const Center(child: CircularProgressIndicator()),
+      errorWidget: (context, url, error) => _buildImageError(),
+      cacheManager: CacheManager(
+        Config(
+          'customCacheKey',
+          stalePeriod: const Duration(hours: 5),
+        ),
+      ),
+      imageBuilder: (context, imageProvider) {
+        final isCached = DefaultCacheManager().getFileFromCache(imageUrl) != null;
+        print('이미지 다운로드 완료: $imageUrl, 캐시에서 로드됨: $isCached');
+        return Image(image: imageProvider, fit: BoxFit.cover);
       },
     );
   }
@@ -215,108 +229,104 @@ class ActionHistoryTimelineList extends StatelessWidget {
       return isInTimeRange && isInTimegroup && hasTag && isNotExcluded;
     }).toList();
 
-    final eventsWithImages = filteredEvents.where((e) => 
-      e.attachedImage != null && 
-      e.attachedImage!.isNotEmpty
-    ).toList();
+    // Goal과 날짜별로 그룹화
+    final groupedEvents = <String, Map<String, List<ActionHistoryData>>>{};
+    for (var event in filteredEvents) {
+      final goalName = event.goalName;
+      final date = DateFormat('yyyy-MM-dd').format(event.timestamp ?? DateTime.now());
+
+      if (!groupedEvents.containsKey(goalName)) {
+        groupedEvents[goalName] = {};
+      }
+      if (!groupedEvents[goalName]!.containsKey(date)) {
+        groupedEvents[goalName]![date] = [];
+      }
+      groupedEvents[goalName]![date]!.add(event);
+    }
 
     return SingleChildScrollView(
       child: Column(
-        children: [
-          if (eventsWithImages.isNotEmpty)
-            Container(
-              height: 120,
-              padding: const EdgeInsets.symmetric(horizontal: 8.0),
-              child: ListView.builder(
-                scrollDirection: Axis.horizontal,
-                itemCount: eventsWithImages.length,
-                itemBuilder: (context, index) {
-                  final event = eventsWithImages[index];
-                  final imageUrls = event.attachedImage
-                      ?.replaceAll('\n', '')
-                      .replaceAll('\r', '')
-                      .replaceAll(']', '')
-                      .split(',')
-                      .map((url) => url.trim())
-                      .where((url) => url.isNotEmpty)
-                      .toList() ?? [];
-                  print('처리된 이미지 URLs: $imageUrls');
+        children: groupedEvents.entries.map((goalEntry) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(goalEntry.key, style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+              ...goalEntry.value.entries.map((dateEntry) {
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(dateEntry.key, style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+                    Container(
+                      height: 120,
+                      padding: const EdgeInsets.symmetric(horizontal: 8.0),
+                      child: ListView.builder(
+                        scrollDirection: Axis.horizontal,
+                        itemCount: dateEntry.value.length,
+                        itemBuilder: (context, index) {
+                          final event = dateEntry.value[index];
+                          final imageUrls = event.attachedImage
+                              ?.replaceAll('[', '')
+                              .replaceAll('\n', '')
+                              .replaceAll('\r', '')
+                              .replaceAll(']', '')
+                              .split(',')
+                              .map((url) => url.trim())
+                              .where((url) => url.isNotEmpty)
+                              .toList() ?? [];
 
-                  return Row(
-                    children: imageUrls.map((imageUrl) => Padding(
-                      padding: const EdgeInsets.only(right: 8.0),
-                      child: AspectRatio(
-                        aspectRatio: 1.0,
-                        child: GestureDetector(
-                          onTap: () => _handleImageTap(context, imageUrl),
-                          child: Hero(
-                            tag: imageUrl,
-                            child: ClipRRect(
-                              borderRadius: BorderRadius.circular(8.0),
-                              child: FutureBuilder<String?>(
-                                future: _getActualImageUrl(imageUrl),
-                                builder: (context, snapshot) {
-                                  if (snapshot.connectionState == ConnectionState.waiting) {
-                                    return const Center(child: CircularProgressIndicator());
-                                  }
-                                  
-                                  return snapshot.data != null
-                                      ? _buildImageContent(snapshot.data!)
-                                      : _buildImageError();
-                                },
-                              ),
-                            ),
-                          ),
-                        ),
+                          return Row(
+                            children: imageUrls.map((imageUrl) => FutureBuilder<String?>(
+                              future: _getActualImageUrl(imageUrl),
+                              builder: (context, snapshot) {
+                                if (snapshot.connectionState == ConnectionState.waiting) {
+                                  return const Padding(
+                                    padding: EdgeInsets.only(right: 8.0),
+                                    child: AspectRatio(
+                                      aspectRatio: 1.0,
+                                      child: Center(child: CircularProgressIndicator()),
+                                    ),
+                                  );
+                                }
+
+                                final actualImageUrl = snapshot.data;
+                                if (actualImageUrl == null) {
+                                  return Padding(
+                                    padding: const EdgeInsets.only(right: 8.0),
+                                    child: AspectRatio(
+                                      aspectRatio: 1.0,
+                                      child: _buildImageError(),
+                                    ),
+                                  );
+                                }
+
+                                return Padding(
+                                  padding: const EdgeInsets.only(right: 8.0),
+                                  child: AspectRatio(
+                                    aspectRatio: 1.0,
+                                    child: GestureDetector(
+                                      onTap: () => _handleImageTap(context, imageUrl),
+                                      child: Hero(
+                                        tag: imageUrl,
+                                        child: ClipRRect(
+                                          borderRadius: BorderRadius.circular(8.0),
+                                          child: _buildImageContent(actualImageUrl),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                );
+                              },
+                            )).toList(),
+                          );
+                        },
                       ),
-                    )).toList(),
-                  );
-                },
-              ),
-            ),
-
-          if (filteredEvents.any((e) => e.attachedFile?.isNotEmpty ?? false))
-            Card(
-              margin: const EdgeInsets.all(8.0),
-              child: SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                child: ConstrainedBox(
-                  constraints: BoxConstraints(
-                    minWidth: MediaQuery.of(context).size.width,
-                  ),
-                  child: DataTable(
-                    columnSpacing: 12,
-                    horizontalMargin: 12,
-                    columns: const [
-                      DataColumn(label: Text('파일명')),
-                      DataColumn(label: Text('업로드 시간')),
-                      DataColumn(label: Text('다운로드')),
-                    ],
-                    rows: filteredEvents
-                        .where((e) => e.attachedFile?.isNotEmpty ?? false)
-                        .map((e) => DataRow(cells: [
-                              DataCell(Text(e.attachedFile ?? '알 수 없는 파일')),
-                              DataCell(Text(
-                                DateFormat('MM/dd HH:mm').format(e.startTime ?? DateTime.now())
-                              )),
-                              DataCell(
-                                IconButton(
-                                  icon: const Icon(Icons.download),
-                                  onPressed: () async {
-                                    final uri = Uri.parse(e.attachedFile!);
-                                    if (await canLaunchUrl(uri)) {
-                                      await launchUrl(uri);
-                                    }
-                                  },
-                                ),
-                              ),
-                            ]))
-                        .toList(),
-                  ),
-                ),
-              ),
-            ),
-        ],
+                    ),
+                  ],
+                );
+              }).toList(),
+            ],
+          );
+        }).toList(),
       ),
     );
   }

@@ -164,42 +164,29 @@ class FileStorageUtils {
 
   static Future<String?> getActualImageUrl(String? url) async {
     if (url == null || url.isEmpty) return null;
-    
-    try {
-      url = url.trim()
-          .replaceAll(RegExp(r'[\[\]\n\r]'), '')
-          .replaceAll(' ', '%20');
-      
-      if (url.startsWith('gs://')) {
-        try {
-          final gsUrl = url.replaceFirst('gs://', '');
-          final parts = gsUrl.split('/');
-          final path = parts.sublist(1).join('/');
-          
-          return await FirebaseStorage.instance
-              .ref(path)
-              .getDownloadURL();
-        } catch (e) {
-          print('Firebase 처리 중 오류: $e');
-          return null;
-        }
-      }
 
-      // HTTP(S) URL은 그대로 반환
-      if (url.startsWith('http')) {
-        return url;
+    if (url.startsWith('gs://')) {
+      try {
+        final storage = FirebaseStorage.instance;
+        final gsReference = storage.refFromURL(url);
+        
+        // 직접 다운로드 URL만 반환
+        final downloadUrl = await gsReference.getDownloadURL();
+        // print('변환된 URL: $downloadUrl');
+        return downloadUrl;
+      } catch (e) {
+        print('Firebase Storage URL 변환 오류: $e');
+        return null;
       }
-
-      // Data URL은 그대로 반환
-      if (url.startsWith('data:image')) {
-        return url;
-      }
-
-      return null;
-    } catch (e) {
-      print('이미지 URL 처리 중 오류 발생: $e');
-      return null;
     }
+
+    // 이미 https:// URL인 경우
+    if (url.startsWith('https://')) {
+      return url;
+    }
+
+    // 기타 URL 처리
+    return url;
   }
 
   static Future<bool> canOpenUrl(String url) async {

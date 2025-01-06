@@ -70,7 +70,7 @@ dependencies:
   shared_preferences: ^2.2.2  
   timelines_plus: ^1.0.4
   url_launcher: ^6.2.5
-
+  flutter_cache_manager: ^3.0.0
 
 dev_dependencies:
   flutter_test:
