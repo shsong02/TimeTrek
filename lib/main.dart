@@ -76,8 +76,8 @@ class _MyAppState extends State<MyApp> {
 
 class NavBarPage extends StatefulWidget {
   const NavBarPage({
-    Key? key, 
-    this.initialPage, 
+    Key? key,
+    this.initialPage,
     this.page,
   }) : super(key: key);
 
@@ -110,9 +110,9 @@ class _NavBarPageState extends State<NavBarPage> {
       'GoalEvaluation': const GoalEvaluation(),
       'chatSchedule': const ChatWidget(),
     };
-    
-    final currentIndex = _currentPage != null 
-        ? -1  // _currentPage가 있으면 bottom nav에서 선택된 항목 없음
+
+    final currentIndex = _currentPage != null
+        ? -1 // _currentPage가 있으면 bottom nav에서 선택된 항목 없음
         : tabs.keys.toList().indexOf(_currentPageName);
 
     return Scaffold(
@@ -146,9 +146,11 @@ class _NavBarPageState extends State<NavBarPage> {
                 extended: _isRailExtended,
                 minWidth: 25,
                 minExtendedWidth: 150,
-                backgroundColor: Theme.of(context).primaryColor.withOpacity(0.05),
+                backgroundColor:
+                    Theme.of(context).primaryColor.withOpacity(0.05),
                 labelType: NavigationRailLabelType.none,
-                selectedIndex: _selectedRailIndex < 0 ? null : _selectedRailIndex,
+                selectedIndex:
+                    _selectedRailIndex < 0 ? null : _selectedRailIndex,
                 useIndicator: true,
                 indicatorColor: Theme.of(context).primaryColor.withOpacity(0.1),
                 selectedIconTheme: IconThemeData(
@@ -188,7 +190,8 @@ class _NavBarPageState extends State<NavBarPage> {
             ),
           ),
           Expanded(
-            child: _currentPage != null ? _currentPage! : tabs[_currentPageName]!,
+            child:
+                _currentPage != null ? _currentPage! : tabs[_currentPageName]!,
           ),
         ],
       ),

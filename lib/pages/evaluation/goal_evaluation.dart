@@ -14,7 +14,6 @@ import 'widgets/progress_charts.dart';
 import 'widgets/execution_charts.dart';
 import 'widgets/action_history.dart';
 
-
 // 데이터 모델
 class ActionEventData {
   final String actionId;
@@ -57,21 +56,28 @@ class ActionEventData {
       Map<String, dynamic> calendarEvent, Map<String, dynamic> actionList) {
     return ActionEventData(
       actionId: actionList['id'] ?? calendarEvent['action_id'] ?? '',
-      actionName: actionList['action_name'] ?? calendarEvent['action_name'] ?? '',
+      actionName:
+          actionList['action_name'] ?? calendarEvent['action_name'] ?? '',
       goalName: actionList['goal_name'] ?? calendarEvent['goal_name'] ?? '',
       timegroup: actionList['timegroup'] ?? calendarEvent['timegroup'] ?? '',
       tags: List<String>.from(calendarEvent['goal_tag'] ?? []),
-      actionStatus: actionList['action_status'] ?? calendarEvent['action_status'] ?? '',
+      actionStatus:
+          actionList['action_status'] ?? calendarEvent['action_status'] ?? '',
       actionStatusDescription: calendarEvent['action_status_description'],
-      actionExecutionTime: (actionList['action_execution_time'] ?? calendarEvent['action_execution_time'] ?? 0).toDouble(),
+      actionExecutionTime: (actionList['action_execution_time'] ??
+              calendarEvent['action_execution_time'] ??
+              0)
+          .toDouble(),
       startTime: (calendarEvent['startTime'] as Timestamp).toDate(),
       endTime: (calendarEvent['endTime'] as Timestamp).toDate(),
       attachedImage: calendarEvent['attached_image'],
       attachedFile: calendarEvent['attached_file'],
       referenceImageCount: calendarEvent['reference_image_count'] ?? 0,
       referenceFileCount: calendarEvent['reference_file_count'] ?? 0,
-      referenceImageUrls: List<String>.from(calendarEvent['reference_image_urls'] ?? []),
-      referenceFileUrls: List<String>.from(calendarEvent['reference_file_urls'] ?? []),
+      referenceImageUrls:
+          List<String>.from(calendarEvent['reference_image_urls'] ?? []),
+      referenceFileUrls:
+          List<String>.from(calendarEvent['reference_file_urls'] ?? []),
     );
   }
 
@@ -85,8 +91,12 @@ class ActionEventData {
       actionStatus: map['action_status'] ?? '',
       actionStatusDescription: map['action_status_description'],
       actionExecutionTime: map['action_execution_time'] ?? 0.0,
-      startTime: map['startTime'] != null ? DateTime.fromMillisecondsSinceEpoch(map['startTime']) : DateTime.fromMillisecondsSinceEpoch(0),
-      endTime: map['endTime'] != null ? DateTime.fromMillisecondsSinceEpoch(map['endTime']) : DateTime.fromMillisecondsSinceEpoch(0),
+      startTime: map['startTime'] != null
+          ? DateTime.fromMillisecondsSinceEpoch(map['startTime'])
+          : DateTime.fromMillisecondsSinceEpoch(0),
+      endTime: map['endTime'] != null
+          ? DateTime.fromMillisecondsSinceEpoch(map['endTime'])
+          : DateTime.fromMillisecondsSinceEpoch(0),
       attachedImage: map['attached_image'],
       attachedFile: map['attached_file'],
       referenceImageCount: map['reference_image_count'] ?? 0,
@@ -96,7 +106,6 @@ class ActionEventData {
     );
   }
 }
-
 
 class GoalEvaluation extends StatefulWidget {
   const GoalEvaluation({
@@ -126,13 +135,11 @@ class _GoalEvaluationState extends State<GoalEvaluation> {
   Future<void> _loadData() async {
     try {
       // 캘린더 이벤트와 액션 리스트 데이터 로드
-      final calendarSnapshot = await FirebaseFirestore.instance
-          .collection('calendar_event')
-          .get();
-      
-      final actionSnapshot = await FirebaseFirestore.instance
-          .collection('action_list')
-          .get();
+      final calendarSnapshot =
+          await FirebaseFirestore.instance.collection('calendar_event').get();
+
+      final actionSnapshot =
+          await FirebaseFirestore.instance.collection('action_list').get();
 
       // 액션 리스트를 맵으로 변환
       final actionMap = {
@@ -141,9 +148,8 @@ class _GoalEvaluationState extends State<GoalEvaluation> {
       };
 
       // 액션 히스토리 로드 및 레거시 데이터 처리
-      final historySnapshot = await FirebaseFirestore.instance
-          .collection('action_history')
-          .get();
+      final historySnapshot =
+          await FirebaseFirestore.instance.collection('action_history').get();
       // 레거시 데이터 삭제 처리
       final batch = FirebaseFirestore.instance.batch();
       for (var doc in historySnapshot.docs) {
@@ -164,15 +170,14 @@ class _GoalEvaluationState extends State<GoalEvaluation> {
 
       // 액션 이벤트 맵 생성 (action_id를 키로 사용)
       final actionEventMap = {
-        for (var event in mergedData)
-          event.actionId: event
+        for (var event in mergedData) event.actionId: event
       };
 
       // 액션 히스토리 데이터 병합
       final mergedHistories = historySnapshot.docs.map((doc) {
         final historyData = doc.data();
         final matchingEvent = actionEventMap[historyData['action_id']];
-        
+
         // 기존 히스토리 데이터에 이벤트 데이터 병합
         if (matchingEvent != null) {
           historyData['startTime'] = matchingEvent.startTime;
@@ -181,7 +186,7 @@ class _GoalEvaluationState extends State<GoalEvaluation> {
           historyData['tags'] = matchingEvent.tags;
           historyData['action_status'] = matchingEvent.actionStatus;
         }
-        
+
         return ActionHistoryData.fromMap(historyData);
       }).toList();
 
@@ -253,7 +258,9 @@ class _GoalEvaluationState extends State<GoalEvaluation> {
                   actionEvents: _actionEvents,
                   actionHistories: _actionHistories,
                 ),
-                InsightMonthlySummaryWidget(actionEvents: _actionEvents, actionHistories: _actionHistories),
+                InsightMonthlySummaryWidget(
+                    actionEvents: _actionEvents,
+                    actionHistories: _actionHistories),
               ],
             ),
           ),
@@ -294,7 +301,9 @@ class InsightFilterWidget extends StatelessWidget {
                 label: Text(
                   tag,
                   style: TextStyle(
-                    color: selectedTags.contains(tag) ? Colors.white : Colors.grey[800],
+                    color: selectedTags.contains(tag)
+                        ? Colors.white
+                        : Colors.grey[800],
                     fontSize: 12,
                     fontWeight: FontWeight.w500,
                   ),
@@ -303,16 +312,19 @@ class InsightFilterWidget extends StatelessWidget {
                 selectedColor: TimeTrekTheme.vitaflowBrandColor,
                 backgroundColor: Colors.grey[200],
                 checkmarkColor: Colors.white,
-                onDeleted: selectedTags.contains(tag) ? () {
-                  final newTags = List<String>.from(selectedTags)..remove(tag);
-                  onTagsChanged(newTags);
-                } : null,
+                onDeleted: selectedTags.contains(tag)
+                    ? () {
+                        final newTags = List<String>.from(selectedTags)
+                          ..remove(tag);
+                        onTagsChanged(newTags);
+                      }
+                    : null,
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(20),
                   side: BorderSide(
-                    color: selectedTags.contains(tag) 
-                        ? TimeTrekTheme.vitaflowBrandColor 
+                    color: selectedTags.contains(tag)
+                        ? TimeTrekTheme.vitaflowBrandColor
                         : Colors.transparent,
                   ),
                 ),
@@ -345,7 +357,8 @@ class InsightFilterWidget extends StatelessWidget {
               ),
               value: hideCompleted,
               activeColor: TimeTrekTheme.vitaflowBrandColor,
-              activeTrackColor: TimeTrekTheme.vitaflowBrandColor.withOpacity(0.4),
+              activeTrackColor:
+                  TimeTrekTheme.vitaflowBrandColor.withOpacity(0.4),
               inactiveThumbColor: Colors.grey[400],
               inactiveTrackColor: Colors.grey[300],
               onChanged: onHideCompletedChanged,
@@ -366,7 +379,8 @@ class InsightDailySummaryWidget extends StatefulWidget {
   }) : super(key: key);
 
   @override
-  State<InsightDailySummaryWidget> createState() => _InsightDailySummaryWidgetState();
+  State<InsightDailySummaryWidget> createState() =>
+      _InsightDailySummaryWidgetState();
 }
 
 class _InsightDailySummaryWidgetState extends State<InsightDailySummaryWidget> {
@@ -379,13 +393,14 @@ class _InsightDailySummaryWidgetState extends State<InsightDailySummaryWidget> {
     final todayEnd = DateTime(today.year, today.month, today.day, 23, 59, 59);
     final tomorrow = today.add(const Duration(days: 1));
     final tomorrowStart = DateTime(tomorrow.year, tomorrow.month, tomorrow.day);
-    final tomorrowEnd = DateTime(tomorrow.year, tomorrow.month, tomorrow.day, 23, 59, 59);
+    final tomorrowEnd =
+        DateTime(tomorrow.year, tomorrow.month, tomorrow.day, 23, 59, 59);
 
-    final todayEvents = widget.actionEvents.where((e) => 
-      e.startTime.isAfter(todayStart) && e.endTime.isBefore(todayEnd));
-    
-    final tomorrowEvents = widget.actionEvents.where((e) => 
-      e.startTime.isAfter(tomorrowStart) && e.endTime.isBefore(tomorrowEnd));
+    final todayEvents = widget.actionEvents.where(
+        (e) => e.startTime.isAfter(todayStart) && e.endTime.isBefore(todayEnd));
+
+    final tomorrowEvents = widget.actionEvents.where((e) =>
+        e.startTime.isAfter(tomorrowStart) && e.endTime.isBefore(tomorrowEnd));
 
     return {
       'today_completed': todayEvents
@@ -396,9 +411,7 @@ class _InsightDailySummaryWidgetState extends State<InsightDailySummaryWidget> {
           .where((e) => e.actionStatus != 'completed')
           .map((e) => e.actionName)
           .toList(),
-      'tomorrow': tomorrowEvents
-          .map((e) => e.actionName)
-          .toList(),
+      'tomorrow': tomorrowEvents.map((e) => e.actionName).toList(),
     };
   }
 
@@ -407,16 +420,15 @@ class _InsightDailySummaryWidgetState extends State<InsightDailySummaryWidget> {
     final today = DateTime.now();
     final todayStart = DateTime(today.year, today.month, today.day);
     final todayEnd = DateTime(today.year, today.month, today.day, 23, 59, 59);
-    
+
     final tomorrow = today.add(const Duration(days: 1));
     final tomorrowStart = DateTime(tomorrow.year, tomorrow.month, tomorrow.day);
-    final tomorrowEnd = DateTime(tomorrow.year, tomorrow.month, tomorrow.day, 23, 59, 59);
+    final tomorrowEnd =
+        DateTime(tomorrow.year, tomorrow.month, tomorrow.day, 23, 59, 59);
 
     // 모든 태그 추출
-    final allTags = widget.actionEvents
-        .expand((event) => event.tags)
-        .toSet()
-        .toList();
+    final allTags =
+        widget.actionEvents.expand((event) => event.tags).toSet().toList();
 
     return SingleChildScrollView(
       child: Column(
@@ -426,9 +438,10 @@ class _InsightDailySummaryWidgetState extends State<InsightDailySummaryWidget> {
             selectedTags: selectedTags,
             hideCompleted: hideCompleted,
             onTagsChanged: (tags) => setState(() => selectedTags = tags),
-            onHideCompletedChanged: (value) => setState(() => hideCompleted = value),
+            onHideCompletedChanged: (value) =>
+                setState(() => hideCompleted = value),
           ),
-          
+
           // 이메일 리포트 위젯 추가
           EmailReportWidget(
             reportType: 'daily',
@@ -438,7 +451,7 @@ class _InsightDailySummaryWidgetState extends State<InsightDailySummaryWidget> {
             startTime: todayStart,
             endTime: todayEnd,
           ),
-          
+
           AIAnalysisWidget(
             type: 'daily',
             events: widget.actionEvents,
@@ -580,10 +593,12 @@ class InsightWeeklySummaryWidget extends StatefulWidget {
   }) : super(key: key);
 
   @override
-  State<InsightWeeklySummaryWidget> createState() => _InsightWeeklySummaryWidgetState();
+  State<InsightWeeklySummaryWidget> createState() =>
+      _InsightWeeklySummaryWidgetState();
 }
 
-class _InsightWeeklySummaryWidgetState extends State<InsightWeeklySummaryWidget> {
+class _InsightWeeklySummaryWidgetState
+    extends State<InsightWeeklySummaryWidget> {
   List<String> selectedTags = [];
   bool hideCompleted = false;
   late PageController _pageController;
@@ -608,16 +623,17 @@ class _InsightWeeklySummaryWidgetState extends State<InsightWeeklySummaryWidget>
     final now = DateTime.now();
     final firstDayOfMonth = DateTime(now.year, now.month, 1);
     final lastDayOfMonth = DateTime(now.year, now.month + 1, 0);
-    
+
     List<WeekRange> weeks = [];
     DateTime weekStart = firstDayOfMonth;
-    
+
     while (weekStart.isBefore(lastDayOfMonth)) {
-      final weekEnd = weekStart.add(const Duration(days: 6, hours: 23, minutes: 59, seconds: 59));
+      final weekEnd = weekStart
+          .add(const Duration(days: 6, hours: 23, minutes: 59, seconds: 59));
       weeks.add(WeekRange(weekStart, weekEnd));
       weekStart = weekStart.add(const Duration(days: 7));
     }
-    
+
     return weeks;
   }
 
@@ -636,8 +652,8 @@ class _InsightWeeklySummaryWidgetState extends State<InsightWeeklySummaryWidget>
     final weekStart = now.subtract(Duration(days: now.weekday - 1));
     final weekEnd = weekStart.add(const Duration(days: 7));
 
-    final thisWeekEvents = widget.actionEvents.where((e) => 
-      e.startTime.isAfter(weekStart) && e.endTime.isBefore(weekEnd));
+    final thisWeekEvents = widget.actionEvents.where(
+        (e) => e.startTime.isAfter(weekStart) && e.endTime.isBefore(weekEnd));
 
     return {
       'thisweek_completed': thisWeekEvents
@@ -653,10 +669,8 @@ class _InsightWeeklySummaryWidgetState extends State<InsightWeeklySummaryWidget>
 
   @override
   Widget build(BuildContext context) {
-    final allTags = widget.actionEvents
-        .expand((event) => event.tags)
-        .toSet()
-        .toList();
+    final allTags =
+        widget.actionEvents.expand((event) => event.tags).toSet().toList();
 
     return Column(
       children: [
@@ -665,16 +679,17 @@ class _InsightWeeklySummaryWidgetState extends State<InsightWeeklySummaryWidget>
           selectedTags: selectedTags,
           hideCompleted: hideCompleted,
           onTagsChanged: (tags) => setState(() => selectedTags = tags),
-          onHideCompletedChanged: (value) => setState(() => hideCompleted = value),
+          onHideCompletedChanged: (value) =>
+              setState(() => hideCompleted = value),
         ),
-        
+
         // AI 분석 위젯을 필터 다음으로 이동
         AIAnalysisWidget(
           type: 'weekly',
           events: widget.actionEvents,
           detail: _getAIAnalysisDetail(),
         ),
-        
+
         // 주간 캐러셀
         Expanded(
           child: PageView.builder(
@@ -686,37 +701,48 @@ class _InsightWeeklySummaryWidgetState extends State<InsightWeeklySummaryWidget>
             itemBuilder: (context, index) {
               final week = weekRanges[index];
               final isCurrentWeek = index == initialPage;
-              
+
               return SingleChildScrollView(
                 child: Column(
                   children: [
                     Container(
                       padding: const EdgeInsets.all(8.0),
-                      decoration: isCurrentWeek ? BoxDecoration(
-                        color: TimeTrekTheme.vitaflowBrandColor.withOpacity(0.1),
-                        borderRadius: BorderRadius.circular(8),
-                      ) : null,
+                      decoration: isCurrentWeek
+                          ? BoxDecoration(
+                              color: TimeTrekTheme.vitaflowBrandColor
+                                  .withOpacity(0.1),
+                              borderRadius: BorderRadius.circular(8),
+                            )
+                          : null,
                       child: Row(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
                           Text(
                             '${DateFormat('MM/dd').format(week.start)} - ${DateFormat('MM/dd').format(week.end)}',
-                            style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                              fontWeight: isCurrentWeek ? FontWeight.bold : null,
-                              color: isCurrentWeek ? TimeTrekTheme.vitaflowBrandColor : null,
-                            ),
+                            style: Theme.of(context)
+                                .textTheme
+                                .titleMedium
+                                ?.copyWith(
+                                  fontWeight:
+                                      isCurrentWeek ? FontWeight.bold : null,
+                                  color: isCurrentWeek
+                                      ? TimeTrekTheme.vitaflowBrandColor
+                                      : null,
+                                ),
                           ),
                           if (isCurrentWeek) ...[
                             const SizedBox(width: 8),
                             Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 8, vertical: 2),
                               decoration: BoxDecoration(
                                 color: TimeTrekTheme.vitaflowBrandColor,
                                 borderRadius: BorderRadius.circular(12),
                               ),
                               child: const Text(
                                 '이번 주',
-                                style: TextStyle(color: Colors.white, fontSize: 12),
+                                style: TextStyle(
+                                    color: Colors.white, fontSize: 12),
                               ),
                             ),
                           ],
@@ -806,6 +832,7 @@ class _InsightWeeklySummaryWidgetState extends State<InsightWeeklySummaryWidget>
                             tag: selectedTags,
                             noActionStatus: hideCompleted ? ['completed'] : [],
                           ),
+                          const SizedBox(height: 16),
                           ActionHistoryTimelineList(
                             actionHistories: widget.actionHistories,
                             startTime: week.start,
@@ -847,10 +874,12 @@ class InsightMonthlySummaryWidget extends StatefulWidget {
   }) : super(key: key);
 
   @override
-  State<InsightMonthlySummaryWidget> createState() => _InsightMonthlySummaryWidgetState();
+  State<InsightMonthlySummaryWidget> createState() =>
+      _InsightMonthlySummaryWidgetState();
 }
 
-class _InsightMonthlySummaryWidgetState extends State<InsightMonthlySummaryWidget> {
+class _InsightMonthlySummaryWidgetState
+    extends State<InsightMonthlySummaryWidget> {
   List<String> selectedTags = [];
   bool hideCompleted = false;
   List<ActionHistoryData> _actionHistories = [];
@@ -863,9 +892,8 @@ class _InsightMonthlySummaryWidgetState extends State<InsightMonthlySummaryWidge
 
   Future<void> _loadActionHistories() async {
     try {
-      final historySnapshot = await FirebaseFirestore.instance
-          .collection('action_history')
-          .get();
+      final historySnapshot =
+          await FirebaseFirestore.instance.collection('action_history').get();
 
       setState(() {
         _actionHistories = historySnapshot.docs
@@ -882,8 +910,8 @@ class _InsightMonthlySummaryWidgetState extends State<InsightMonthlySummaryWidge
     final monthStart = DateTime(now.year, now.month, 1);
     final monthEnd = DateTime(now.year, now.month + 1, 0, 23, 59, 59);
 
-    final thisMonthEvents = widget.actionEvents.where((e) => 
-      e.startTime.isAfter(monthStart) && e.endTime.isBefore(monthEnd));
+    final thisMonthEvents = widget.actionEvents.where(
+        (e) => e.startTime.isAfter(monthStart) && e.endTime.isBefore(monthEnd));
 
     return {
       'thismonth_completed': thisMonthEvents
@@ -904,10 +932,8 @@ class _InsightMonthlySummaryWidgetState extends State<InsightMonthlySummaryWidge
     final monthEnd = DateTime(now.year, now.month + 1, 0, 23, 59, 59);
 
     // 모든 태그 추출
-    final allTags = widget.actionEvents
-        .expand((event) => event.tags)
-        .toSet()
-        .toList();
+    final allTags =
+        widget.actionEvents.expand((event) => event.tags).toSet().toList();
 
     return SingleChildScrollView(
       child: Column(
@@ -917,16 +943,17 @@ class _InsightMonthlySummaryWidgetState extends State<InsightMonthlySummaryWidge
             selectedTags: selectedTags,
             hideCompleted: hideCompleted,
             onTagsChanged: (tags) => setState(() => selectedTags = tags),
-            onHideCompletedChanged: (value) => setState(() => hideCompleted = value),
+            onHideCompletedChanged: (value) =>
+                setState(() => hideCompleted = value),
           ),
-          
+
           // AI 분석 위젯을 필터 다음으로 이동
           AIAnalysisWidget(
             type: 'monthly',
             events: widget.actionEvents,
             detail: _getAIAnalysisDetail(),
           ),
-          
+
           // 월간 진행 상황
           Card(
             margin: const EdgeInsets.all(8.0),
@@ -937,7 +964,8 @@ class _InsightMonthlySummaryWidgetState extends State<InsightMonthlySummaryWidge
                   padding: const EdgeInsets.all(16.0),
                   child: Text(
                     '${DateFormat('yyyy년 MM월').format(monthStart)} 진행 상황',
-                    style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                    style: const TextStyle(
+                        fontSize: 20, fontWeight: FontWeight.bold),
                   ),
                 ),
                 // 차트와 체크리스트
@@ -1022,25 +1050,28 @@ class AIAnalysisService {
     required List<ActionEventData> events,
     required Map<String, List<String>> detail,
   }) async {
-    final url = Uri.parse('https://shsong83.app.n8n.cloud/webhook/timetrek-goal-evaluation');
-    
+    final url = Uri.parse(
+        'https://shsong83.app.n8n.cloud/webhook/timetrek-goal-evaluation');
+
     try {
       final response = await http.post(
         url,
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({
           'type': type,
-          'actionEventData': events.map((e) => {
-            'actionName': e.actionName,
-            'goalName': e.goalName,
-            'timegroup': e.timegroup,
-            'tags': e.tags,
-            'actionStatus': e.actionStatus,
-            'actionStatusDescription': e.actionStatusDescription,
-            'actionExecutionTime': e.actionExecutionTime,
-            'startTime': e.startTime.toIso8601String(),
-            'endTime': e.endTime.toIso8601String(),
-          }).toList(),
+          'actionEventData': events
+              .map((e) => {
+                    'actionName': e.actionName,
+                    'goalName': e.goalName,
+                    'timegroup': e.timegroup,
+                    'tags': e.tags,
+                    'actionStatus': e.actionStatus,
+                    'actionStatusDescription': e.actionStatusDescription,
+                    'actionExecutionTime': e.actionExecutionTime,
+                    'startTime': e.startTime.toIso8601String(),
+                    'endTime': e.endTime.toIso8601String(),
+                  })
+              .toList(),
           'detail': detail,
         }),
       );
@@ -1099,11 +1130,11 @@ class _AIAnalysisWidgetState extends State<AIAnalysisWidget> {
       final storage = html.window.localStorage;
       final key = _getStorageKey();
       final savedData = storage[key];
-      
+
       if (savedData != null) {
         final data = jsonDecode(savedData);
         final analysisTime = DateTime.parse(data['timestamp']);
-        
+
         if (_isAnalysisValid(analysisTime)) {
           setState(() {
             _analysisResult = data['result'];
@@ -1127,9 +1158,9 @@ class _AIAnalysisWidgetState extends State<AIAnalysisWidget> {
         'parsed': parsed,
         'timestamp': DateTime.now().toIso8601String(),
       };
-      
+
       html.window.localStorage[_getStorageKey()] = jsonEncode(data);
-      
+
       setState(() {
         _analysisResult = result;
         _parsedAnalysis = parsed;
@@ -1148,12 +1179,12 @@ class _AIAnalysisWidgetState extends State<AIAnalysisWidget> {
         events: widget.events,
         detail: widget.detail,
       );
-      
+
       final Map<String, dynamic> jsonResult = jsonDecode(result);
       final output = jsonResult['output'] as Map<String, dynamic>;
-      
+
       String markdownContent = '';
-      
+
       if (widget.type == 'daily') {
         markdownContent = '''
 ## 오늘의 요약
@@ -1186,10 +1217,10 @@ ${output['tomorrow_issue_point']}
 
   String _getTimeDisplay() {
     if (_lastAnalysisTime == null) return '';
-    
+
     final now = DateTime.now();
     final difference = now.difference(_lastAnalysisTime!);
-    
+
     if (difference.inMinutes < 1) {
       return '방금 전';
     } else if (difference.inHours < 1) {
@@ -1235,7 +1266,7 @@ ${output['tomorrow_issue_point']}
                 ),
                 ElevatedButton.icon(
                   onPressed: _isLoading ? null : _getAnalysis,
-                  icon: _isLoading 
+                  icon: _isLoading
                       ? const SizedBox(
                           width: 20,
                           height: 20,
@@ -1265,21 +1296,22 @@ ${output['tomorrow_issue_point']}
                   styleSheet: MarkdownStyleSheet(
                     p: const TextStyle(fontSize: 14, height: 1.5),
                     h1: TextStyle(
-                      fontSize: 20, 
+                      fontSize: 20,
                       fontWeight: FontWeight.bold,
                       color: TimeTrekTheme.vitaflowBrandColor,
                     ),
                     h2: TextStyle(
-                      fontSize: 18, 
+                      fontSize: 18,
                       fontWeight: FontWeight.bold,
                       color: TimeTrekTheme.vitaflowBrandColor,
                     ),
                     h3: TextStyle(
-                      fontSize: 16, 
+                      fontSize: 16,
                       fontWeight: FontWeight.bold,
                       color: Colors.grey[700],
                     ),
-                    listBullet: TextStyle(color: TimeTrekTheme.vitaflowBrandColor),
+                    listBullet:
+                        TextStyle(color: TimeTrekTheme.vitaflowBrandColor),
                   ),
                 ),
               ),
@@ -1342,7 +1374,7 @@ class _EmailReportWidgetState extends State<EmailReportWidget> {
     try {
       print('이메일 리포트 생성 시작...');
       final htmlContent = await _generateHtmlReport();
-      
+
       if (htmlContent == null) {
         print('HTML 리포트 생성 실패');
         if (mounted) {
@@ -1352,17 +1384,18 @@ class _EmailReportWidgetState extends State<EmailReportWidget> {
         }
         return;
       }
-      
+
       print('HTML 리포트 생성 완료, API 호출 시작...');
-      final url = Uri.parse('https://shsong83.app.n8n.cloud/webhook/timetrek-goal-evaluation-send-email');
-      
+      final url = Uri.parse(
+          'https://shsong83.app.n8n.cloud/webhook/timetrek-goal-evaluation-send-email');
+
       final response = await http.post(
         url,
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({
           'to': _emailController.text,
-          'subject': '${widget.reportType == 'daily' ? '[TimeTrek] 일간' : 
-                     widget.reportType == 'weekly' ? '[TimeTrek] 주간' : '[TimeTrek] 월간'} 목표 평가 리포트',
+          'subject':
+              '${widget.reportType == 'daily' ? '[TimeTrek] 일간' : widget.reportType == 'weekly' ? '[TimeTrek] 주간' : '[TimeTrek] 월간'} 목표 평가 리포트',
           'html': htmlContent,
         }),
       );
@@ -1393,26 +1426,31 @@ class _EmailReportWidgetState extends State<EmailReportWidget> {
   Future<String?> _generateHtmlReport() async {
     try {
       // 데이터 준비
-      final filteredEvents = widget.actionEvents.where((e) => 
-        e.startTime.isAfter(widget.startTime) &&
-        e.endTime.isBefore(widget.endTime) &&
-        (widget.selectedTags.isEmpty || widget.selectedTags.any((tag) => e.tags.contains(tag))) &&
-        (!widget.hideCompleted || e.actionStatus != 'completed')
-      ).toList();
+      final filteredEvents = widget.actionEvents
+          .where((e) =>
+              e.startTime.isAfter(widget.startTime) &&
+              e.endTime.isBefore(widget.endTime) &&
+              (widget.selectedTags.isEmpty ||
+                  widget.selectedTags.any((tag) => e.tags.contains(tag))) &&
+              (!widget.hideCompleted || e.actionStatus != 'completed'))
+          .toList();
 
       // 시간대별 데이터 계산
       final timeGroups = <String, double>{};
       for (var event in filteredEvents) {
         final hours = event.actionExecutionTime / 60.0; // 분을 시간으로 변환
-        timeGroups[event.timegroup] = (timeGroups[event.timegroup] ?? 0) + hours;
+        timeGroups[event.timegroup] =
+            (timeGroups[event.timegroup] ?? 0) + hours;
       }
 
       // 진행률 계산
-      final completedCount = filteredEvents.where((e) => e.actionStatus == 'completed').length;
+      final completedCount =
+          filteredEvents.where((e) => e.actionStatus == 'completed').length;
       final totalCount = filteredEvents.length;
       final progress = totalCount > 0 ? (completedCount / totalCount * 100) : 0;
 
-      print('데이터 준비 완료: ${filteredEvents.length}개 이벤트, ${timeGroups.length}개 시간대');
+      print(
+          '데이터 준비 완료: ${filteredEvents.length}개 이벤트, ${timeGroups.length}개 시간대');
 
       // AI 분석 결과 가져오기
       String aiAnalysis = '';
@@ -1420,11 +1458,11 @@ class _EmailReportWidgetState extends State<EmailReportWidget> {
         // 로컬 스토리지에서 AI 분석 결과 가져오기
         final storageKey = 'ai_analysis_${widget.reportType}';
         final savedData = html.window.localStorage[storageKey];
-        
+
         if (savedData != null) {
           final data = jsonDecode(savedData);
           final output = data['parsed'] as Map<String, dynamic>;
-          
+
           if (widget.reportType == 'daily') {
             aiAnalysis = '''
               <div class="card">
@@ -1549,9 +1587,9 @@ class _EmailReportWidgetState extends State<EmailReportWidget> {
                       <th style="padding: 12px; text-align: left; border: 1px solid #ddd;">시간</th>
                       <th style="padding: 12px; text-align: left; border: 1px solid #ddd;">업무</th>
                     </tr>
-                    ${([...filteredEvents]
-                      ..sort((a, b) => a.startTime.compareTo(b.startTime)))
-                      .map((e) => '''
+                    ${([
+        ...filteredEvents
+      ]..sort((a, b) => a.startTime.compareTo(b.startTime))).map((e) => '''
                         <tr>
                           <td style="padding: 12px; border: 1px solid #ddd;">
                             ${DateFormat('HH:mm').format(e.startTime)} - ${DateFormat('HH:mm').format(e.endTime)}
@@ -1648,7 +1686,8 @@ class _EmailReportWidgetState extends State<EmailReportWidget> {
                       decoration: const InputDecoration(
                         hintText: '이메일 주소 입력',
                         hintStyle: TextStyle(fontSize: 13),
-                        contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 0),
+                        contentPadding:
+                            EdgeInsets.symmetric(horizontal: 12, vertical: 0),
                         border: OutlineInputBorder(),
                       ),
                       style: const TextStyle(fontSize: 13),
@@ -1661,7 +1700,7 @@ class _EmailReportWidgetState extends State<EmailReportWidget> {
                   height: 40,
                   child: ElevatedButton.icon(
                     onPressed: _isSending ? null : _sendEmail,
-                    icon: _isSending 
+                    icon: _isSending
                         ? const SizedBox(
                             width: 16,
                             height: 16,
@@ -1737,11 +1776,14 @@ class ActionHistoryData {
       attachedImageName: map['attached_image_name'],
       attachedFileName: map['attached_file_name'],
       actionExecutionTime: (map['action_execution_time'] ?? 0).toDouble(),
-      startTime: map['startTime'] is Timestamp ? (map['startTime'] as Timestamp).toDate() : null,
-      endTime: map['endTime'] is Timestamp ? (map['endTime'] as Timestamp).toDate() : null,
+      startTime: map['startTime'] is Timestamp
+          ? (map['startTime'] as Timestamp).toDate()
+          : null,
+      endTime: map['endTime'] is Timestamp
+          ? (map['endTime'] as Timestamp).toDate()
+          : null,
       timegroup: map['timegroup'],
       tags: List<String>.from(map['tags'] ?? []),
     );
   }
 }
-

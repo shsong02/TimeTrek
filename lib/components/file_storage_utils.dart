@@ -11,7 +11,7 @@ import 'package:http/http.dart' as http;
 
 class FileStorageUtils {
   static const String _basePath = 'users';
-  
+
   static Future<Map<String, dynamic>> uploadImage({
     required String uid,
     required String goalName,
@@ -39,7 +39,7 @@ class FileStorageUtils {
     required PlatformFile file,
   }) async {
     if (file.bytes == null) throw Exception('파일 데이터가 없습니다.');
-    
+
     return _uploadContent(
       uid: uid,
       goalName: goalName,
@@ -64,10 +64,11 @@ class FileStorageUtils {
       final timestamp = DateTime.now().millisecondsSinceEpoch;
       final safeGoalName = _getSafeName(goalName, 20);
       final safeActionName = _getSafeName(actionName, 20);
-      
+
       final extension = fileName.split('.').last;
       final safeFileName = '${timestamp}.$extension';
-      final gsPath = '$_basePath/$uid/$type/$safeGoalName/$safeActionName/$safeFileName';
+      final gsPath =
+          '$_basePath/$uid/$type/$safeGoalName/$safeActionName/$safeFileName';
 
       final data = await getData();
       final metadata = SettableMetadata(
@@ -104,10 +105,10 @@ class FileStorageUtils {
     try {
       final safeGoalName = _getSafeName(goalName, 50);
       final types = ['images', 'files'];
-      
+
       for (final type in types) {
         String basePath = '$_basePath/$uid/$type/$safeGoalName';
-        
+
         if (actionName != null) {
           final safeActionName = _getSafeName(actionName, 50);
           basePath = '$basePath/$safeActionName';
@@ -131,11 +132,11 @@ class FileStorageUtils {
 
   static Future<void> _recursiveDelete(Reference ref) async {
     final result = await ref.listAll();
-    
+
     for (var prefix in result.prefixes) {
       await _recursiveDelete(prefix);
     }
-    
+
     for (var item in result.items) {
       print('Google Storage 파일 삭제: ${item.fullPath}');
       await item.delete();
@@ -144,7 +145,8 @@ class FileStorageUtils {
 
   // 유틸리티 메서드들
   static String _getSafeName(String name, int maxLength) {
-    return name.substring(0, name.length > maxLength ? maxLength : name.length)
+    return name
+        .substring(0, name.length > maxLength ? maxLength : name.length)
         .replaceAll(RegExp(r'[^a-zA-Z0-9가-힣]'), '_');
   }
 
@@ -155,7 +157,8 @@ class FileStorageUtils {
     int quality = 100;
     Uint8List resizedImageData;
     do {
-      resizedImageData = Uint8List.fromList(img.encodeJpg(image, quality: quality));
+      resizedImageData =
+          Uint8List.fromList(img.encodeJpg(image, quality: quality));
       quality -= 10;
     } while (resizedImageData.lengthInBytes > 1024 * 1024 && quality > 0);
 
@@ -169,23 +172,19 @@ class FileStorageUtils {
       try {
         final storage = FirebaseStorage.instance;
         final gsReference = storage.refFromURL(url);
-        
-        // 직접 다운로드 URL만 반환
-        final downloadUrl = await gsReference.getDownloadURL();
-        // print('변환된 URL: $downloadUrl');
-        return downloadUrl;
+
+        // 이미지를 직접 다운로드하여 base64로 변환
+        final bytes = await gsReference.getData();
+        if (bytes != null) {
+          final base64String = base64Encode(bytes);
+          return 'data:image/jpeg;base64,$base64String';
+        }
+        return null;
       } catch (e) {
         print('Firebase Storage URL 변환 오류: $e');
         return null;
       }
     }
-
-    // 이미 https:// URL인 경우
-    if (url.startsWith('https://')) {
-      return url;
-    }
-
-    // 기타 URL 처리
     return url;
   }
 
@@ -199,4 +198,4 @@ class FileStorageUtils {
       return false;
     }
   }
-} 
+}
