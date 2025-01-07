@@ -1023,6 +1023,7 @@ class _InsightMonthlySummaryWidgetState
                         tag: selectedTags,
                         noActionStatus: hideCompleted ? ['completed'] : [],
                       ),
+                      const SizedBox(height: 16),
                       ActionHistoryTimelineList(
                         actionHistories: widget.actionHistories,
                         startTime: monthStart,

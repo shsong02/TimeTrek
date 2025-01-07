@@ -32,6 +32,8 @@ class _ChatWidgetState extends State<ChatWidget> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
     return Portal(
       child: SizedBox(
         width: widget.width ?? double.infinity,
@@ -39,13 +41,20 @@ class _ChatWidgetState extends State<ChatWidget> {
         child: Column(
           children: [
             Expanded(
-              child: ListView.builder(
-                controller: _scrollController,
-                itemCount: messages.length,
-                itemBuilder: (context, index) {
-                  final message = messages[index];
-                  return MessageBubble(message: message);
-                },
+              child: Container(
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.surface,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                margin: const EdgeInsets.all(8.0),
+                child: ListView.builder(
+                  controller: _scrollController,
+                  itemCount: messages.length,
+                  itemBuilder: (context, index) {
+                    final message = messages[index];
+                    return MessageBubble(message: message);
+                  },
+                ),
               ),
             ),
             Padding(
@@ -118,16 +127,36 @@ class _ChatWidgetState extends State<ChatWidget> {
                               hintText: '메시지를 입력하세요...',
                               border: OutlineInputBorder(
                                 borderRadius: BorderRadius.circular(25),
+                                borderSide: BorderSide(
+                                  color: theme.colorScheme.primary,
+                                ),
+                              ),
+                              enabledBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(25),
+                                borderSide: BorderSide(
+                                  color: theme.colorScheme.primary
+                                      .withOpacity(0.5),
+                                ),
+                              ),
+                              focusedBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(25),
+                                borderSide: BorderSide(
+                                  color: theme.colorScheme.primary,
+                                  width: 2,
+                                ),
                               ),
                               filled: true,
-                              fillColor: Colors.grey[200],
+                              fillColor: theme.colorScheme.surface,
                             ),
                             onSubmitted: (text) => _sendMessage(text),
                           ),
                         ),
                       ),
                       IconButton(
-                        icon: const Icon(Icons.send),
+                        icon: Icon(
+                          Icons.send,
+                          color: theme.colorScheme.primary,
+                        ),
                         onPressed: () => _sendMessage(controller.text),
                       ),
                     ],
@@ -275,19 +304,37 @@ class MessageBubble extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
     return Align(
       alignment: message.isUser ? Alignment.centerRight : Alignment.centerLeft,
       child: Container(
         margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         decoration: BoxDecoration(
-          color: message.isUser ? Colors.blue : Colors.grey[300],
+          color: message.isUser
+              ? theme.colorScheme.primary
+              : theme.colorScheme.surface,
           borderRadius: BorderRadius.circular(12),
+          boxShadow: [
+            BoxShadow(
+              color: theme.shadowColor.withOpacity(0.1),
+              blurRadius: 4,
+              offset: const Offset(0, 2),
+            ),
+          ],
+          border: Border.all(
+            color: message.isUser
+                ? Colors.transparent
+                : theme.colorScheme.outline.withOpacity(0.2),
+          ),
         ),
         child: Text(
           message.text,
-          style: TextStyle(
-            color: message.isUser ? Colors.white : Colors.black,
+          style: theme.textTheme.bodyMedium?.copyWith(
+            color: message.isUser
+                ? theme.colorScheme.onPrimary
+                : theme.colorScheme.onSurface,
           ),
         ),
       ),
