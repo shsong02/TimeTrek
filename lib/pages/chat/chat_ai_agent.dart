@@ -262,43 +262,119 @@ class _ChatAIAgentState extends State<ChatAIAgent> {
     _scrollToBottom();
 
     try {
-      String type = 'default';
-      String message = text;
+      final db = FirebaseFirestore.instance;
+      Map<String, dynamic>? goalInfo;
+      List<Map<String, dynamic>> actionInfo = [];
+      List<Map<String, dynamic>> calendarEvents = [];
 
-      if (text.startsWith('#조회')) {
-        type = 'get';
-        message = text.replaceFirst('#조회', '').trim();
-      } else if (text.startsWith('#생성')) {
-        type = 'add';
-        message = text.replaceFirst('#생성', '').trim();
-      } else if (text.startsWith('#삭제')) {
-        type = 'delete';
-        message = text.replaceFirst('#삭제', '').trim();
+      // goal_info 가져오기
+      if (selectedGoal != null) {
+        final goalDoc = await db
+            .collection('goal_list')
+            .where('name', isEqualTo: selectedGoal)
+            .get();
+        if (goalDoc.docs.isNotEmpty) {
+          goalInfo = goalDoc.docs.first.data();
+          // Timestamp를 ISO 문자열로 변환
+          if (goalInfo!['created_at'] != null) {
+            goalInfo!['created_at'] = (goalInfo!['created_at'] as Timestamp)
+                .toDate()
+                .toIso8601String();
+          }
+        }
+
+        // 디버깅을 위한 로그 추가
+        print('Selected Goal: $selectedGoal');
+        print('Goal Info: $goalInfo');
       }
 
-      // API 요청 본 수정
+      // action_info 가져오기
+      if (selectedActions.isNotEmpty) {
+        // 디버깅을 위한 로그 추가
+        print('Selected Actions: $selectedActions');
+
+        final Query query = db.collection('action_list');
+
+        if (selectedActions.length ==
+            actionList
+                .where((action) => action['goal_name'] == selectedGoal)
+                .length) {
+          // 모든 Action이 선택된 경우: goal_name으로만 필터링
+          final actionDocs =
+              await query.where('goal_name', isEqualTo: selectedGoal).get();
+          actionInfo = actionDocs.docs
+              .map((doc) => doc.data() as Map<String, dynamic>)
+              .toList();
+        } else {
+          // 특정 Action들이 선택된 경우: goal_name과 action_name으로 필터링
+          final actionDocs = await query
+              .where('goal_name', isEqualTo: selectedGoal)
+              .where('action_name', whereIn: selectedActions)
+              .get();
+          actionInfo = actionDocs.docs
+              .map((doc) => doc.data() as Map<String, dynamic>)
+              .toList();
+        }
+
+        print('Action Info: $actionInfo');
+      }
+
+      // calendar_event 가져오기
+      if (selectedActions.isNotEmpty) {
+        // 기본 쿼리 시작
+        Query query = db
+            .collection('calendar_event')
+            .where('action_name', whereIn: selectedActions);
+
+        // startTime이 있는 경우에만 조건 추가
+        if (startTime != null) {
+          query = query.where('startTime', isGreaterThanOrEqualTo: startTime);
+        }
+
+        // endTime이 있는 경우에만 조건 추가
+        if (endTime != null) {
+          query = query.where('endTime', isLessThanOrEqualTo: endTime);
+        }
+
+        final calendarDocs = await query.get();
+        calendarEvents = calendarDocs.docs.map((doc) {
+          final data = doc.data() as Map<String, dynamic>;
+          // Timestamp를 ISO 문자열로 변환
+          if (data['startTime'] != null) {
+            data['startTime'] =
+                (data['startTime'] as Timestamp).toDate().toIso8601String();
+          }
+          if (data['endTime'] != null) {
+            data['endTime'] =
+                (data['endTime'] as Timestamp).toDate().toIso8601String();
+          }
+          return data;
+        }).toList();
+      }
+
+      // 채팅 히스토리 구성
+      final chatHistory = messages
+          .take(10)
+          .map((m) => {
+                'text': m.text,
+                'isUser': m.isUser,
+                'timestamp': m.timestamp.toIso8601String(),
+              })
+          .toList();
+
+      // API 요청 본문 구성
       final requestBody = {
-        'message': message,
-        'type': type,
-        'goal_info': selectedGoal,
-        'action_info': selectedActions,
-        'calendar_event': {
-          'startTime': startTime?.toIso8601String(),
-          'endTime': endTime?.toIso8601String(),
-        },
-        'chat_history': messages
-            .take(10)
-            .map((m) => {
-                  'text': m.text,
-                  'isUser': m.isUser,
-                })
-            .toList(),
+        'goal_info': goalInfo,
+        'action_info': actionInfo,
+        'calendar_event': calendarEvents,
+        'chat_history': chatHistory,
         'chat': text,
       };
 
       final response = await http.post(
         Uri.parse('https://shsong83.app.n8n.cloud/webhook-test/chat-message'),
-        body: requestBody,
+        body: jsonEncode(requestBody), // JSON 문자열로 인코딩
+        headers: {'Content-Type': 'application/json'}, // 헤더 추가
       );
 
       if (response.statusCode == 200) {
@@ -392,8 +468,8 @@ class _ChatAIAgentState extends State<ChatAIAgent> {
   }
 
   void _processEditActions(List<Map<String, dynamic>> actions) {
-    // TODO: action_list 컬렉션 업데이트 로직 구현
-    // 각 액션 타입(create, delete, edit)에 따른 처리
+    // 디버깅을 위한 로그 추가
+    print('현재입(create, delete, edit)에 따른 처리');
   }
 }
 
@@ -473,7 +549,7 @@ class TargetQuestionControl extends StatefulWidget {
 
 class _TargetQuestionControlState extends State<TargetQuestionControl> {
   String? selectedGoal;
-  List<String> selectedActions = ['ALL'];
+  List<String> selectedActions = [];
   DateTime? startDate;
   DateTime? endDate;
   List<String> goalNames = [];
@@ -553,7 +629,7 @@ class _TargetQuestionControlState extends State<TargetQuestionControl> {
               onChanged: (value) {
                 setState(() {
                   selectedGoal = value;
-                  selectedActions = ['ALL'];
+                  selectedActions = [];
                 });
                 if (value != null) {
                   widget.onGoalSelected(value);
@@ -568,35 +644,28 @@ class _TargetQuestionControlState extends State<TargetQuestionControl> {
               subtitle: 'AI Chat 에게 질문하고 싶은 Action 을 선택하세요',
               child: MultiDropdown<String>(
                 controller: _actionController,
-                items: [
-                  DropdownItem<String>(
-                    id: 'ALL',
-                    value: 'ALL',
-                    label: 'ALL',
-                    selected: selectedActions.contains('ALL'),
-                  ),
-                  ...actionList
-                      .where((action) => action['goal_name'] == selectedGoal)
-                      .map((action) => DropdownItem<String>(
-                            id: action['action_name'],
-                            value: action['action_name'],
-                            label: action['action_name'] as String,
-                            selected:
-                                selectedActions.contains(action['action_name']),
-                          ))
-                      .toList(),
-                ],
+                items: actionList
+                    .where((action) => action['goal_name'] == selectedGoal)
+                    .map((action) => DropdownItem<String>(
+                          id: action['action_name'],
+                          value: action['action_name'],
+                          label: action['action_name'] as String,
+                          selected: selectedActions.isEmpty
+                              ? true
+                              : selectedActions.contains(action['action_name']),
+                        ))
+                    .toList(),
                 onSelectionChange: (items) {
                   setState(() {
-                    if (items.any((item) => item == 'ALL')) {
-                      selectedActions = ['ALL'];
-                    } else {
-                      selectedActions = items.toList();
-                      if (selectedActions.isEmpty) {
-                        selectedActions = ['ALL'];
-                      }
-                    }
+                    selectedActions = items.isEmpty
+                        ? actionList
+                            .where(
+                                (action) => action['goal_name'] == selectedGoal)
+                            .map((action) => action['action_name'] as String)
+                            .toList()
+                        : items.toList();
                   });
+
                   widget.onActionsSelected(selectedActions);
                 },
                 searchEnabled: true,
@@ -618,7 +687,7 @@ class _TargetQuestionControlState extends State<TargetQuestionControl> {
                       color: Theme.of(context).primaryColor.withOpacity(0.5),
                     ),
                   ),
-                  hintText: 'Action 선택...',
+                  hintText: '모든 Action 선택',
                 ),
               ),
             ),
