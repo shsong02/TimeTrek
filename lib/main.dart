@@ -12,7 +12,7 @@ import '/pages/actions/add_timeslot_calendar.dart';
 import '/pages/actions/add_timeslot_event_calendar.dart';
 import '/pages/actions/create_action.dart';
 import '/pages/evaluation/goal_evaluation.dart';
-import '/pages/chat/chat_widget.dart';
+import 'pages/chat/chat_ai_agent.dart';
 import '/pages/auth/authentication_widget.dart';
 
 void main() async {
@@ -108,7 +108,7 @@ class _NavBarPageState extends State<NavBarPage> {
       'CreateGoals': const CreateAction(),
       'ActionCalendar': const ActionCalendar(),
       'GoalEvaluation': const GoalEvaluation(),
-      'chatSchedule': const ChatWidget(),
+      'chatSchedule': const ChatAIAgent(),
     };
 
     final currentIndex = _currentPage != null
