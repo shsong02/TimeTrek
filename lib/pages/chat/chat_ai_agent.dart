@@ -16,10 +16,14 @@ class ChatAIAgent extends StatefulWidget {
     super.key,
     this.width,
     this.height,
+    this.onGoalSelected,
+    this.onActionsSelected,
   });
 
   final double? width;
   final double? height;
+  final Function(String)? onGoalSelected;
+  final Function(List<String>)? onActionsSelected;
 
   @override
   State<ChatAIAgent> createState() => _ChatAIAgentState();
@@ -63,7 +67,6 @@ class _ChatAIAgentState extends State<ChatAIAgent> {
 
   Future<void> _loadGoalsAndActions() async {
     try {
-      // action_list 컬렉션에서 고유한 goal_name 목록 가져오기
       final actionListRef =
           FirebaseFirestore.instance.collection('action_list');
       final actionDocs = await actionListRef.get();
@@ -79,6 +82,20 @@ class _ChatAIAgentState extends State<ChatAIAgent> {
         actionList = actionDocs.docs
             .map((doc) => doc.data() as Map<String, dynamic>)
             .toList();
+
+        // 첫 번째 Goal을 기본값으로 설정
+        if (goalNames.isNotEmpty && selectedGoal == null) {
+          selectedGoal = goalNames[0];
+          // 선택된 Goal의 모든 Action 자동 선택
+          selectedActions = actionList
+              .where((action) => action['goal_name'] == selectedGoal)
+              .map((action) => action['action_name'] as String)
+              .toList();
+
+          // 상위 위젯에 선택 상태 전달
+          widget.onGoalSelected?.call(selectedGoal!);
+          widget.onActionsSelected?.call(selectedActions);
+        }
       });
     } catch (e) {
       print('목표 및 액션 로딩 오류: $e');
@@ -94,102 +111,110 @@ class _ChatAIAgentState extends State<ChatAIAgent> {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
-    return Portal(
-      child: SizedBox(
-        width: widget.width ?? double.infinity,
-        height: widget.height ?? double.infinity,
-        child: Column(
-          children: [
-            Card(
-              margin: const EdgeInsets.all(4.0),
-              elevation: 2,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.all(4.0),
-                    child: Text(
-                      'AI Chat 질문 패널',
-                      style: theme.textTheme.titleLarge?.copyWith(
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ),
-                  const Divider(),
-                  TargetQuestionControl(
-                    onGoalSelected: (goal) =>
-                        setState(() => selectedGoal = goal),
-                    onActionsSelected: (actions) =>
-                        setState(() => selectedActions = actions),
-                    onTimeRangeSelected: (start, end) {
-                      setState(() {
-                        startTime = start;
-                        endTime = end;
-                      });
-                    },
-                  ),
-                ],
-              ),
-            ),
-            Expanded(
-              child: Card(
-                margin: const EdgeInsets.all(8.0),
+    return GestureDetector(
+      onTap: () {
+        // 포커스 해제
+        FocusScope.of(context).unfocus();
+      },
+      child: Portal(
+        child: SizedBox(
+          width: widget.width ?? double.infinity,
+          height: widget.height ?? double.infinity,
+          child: Column(
+            children: [
+              Card(
+                margin: const EdgeInsets.all(4.0),
                 elevation: 2,
                 child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Expanded(
-                      child: ListView.builder(
-                        controller: _scrollController,
-                        itemCount: messages.length,
-                        itemBuilder: (context, index) {
-                          final message = messages[index];
-                          return MessageBubble(message: message);
-                        },
+                    Padding(
+                      padding: const EdgeInsets.all(4.0),
+                      child: Text(
+                        'AI Chat 질문 패널',
+                        style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                              fontWeight: FontWeight.bold,
+                            ),
                       ),
                     ),
                     const Divider(),
-                    Padding(
-                      padding: const EdgeInsets.all(8.0),
-                      child: TextField(
-                        controller: _messageController,
-                        focusNode: _focusNode,
-                        decoration: InputDecoration(
-                          hintText: '메시지를 입력하세요...',
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(25),
-                            borderSide: BorderSide(
-                              color: theme.colorScheme.primary,
-                            ),
-                          ),
-                          enabledBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(25),
-                            borderSide: BorderSide(
-                              color: theme.colorScheme.primary.withOpacity(0.5),
-                            ),
-                          ),
-                          focusedBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(25),
-                            borderSide: BorderSide(
-                              color: theme.colorScheme.primary,
-                              width: 2,
-                            ),
-                          ),
-                          filled: true,
-                          fillColor: theme.colorScheme.surface,
-                        ),
-                        onSubmitted: _sendMessage,
-                        onChanged: (value) {
-                          // 필요한 경우 여기에 추가 로직
-                        },
-                      ),
+                    TargetQuestionControl(
+                      onGoalSelected: (goal) =>
+                          setState(() => selectedGoal = goal),
+                      onActionsSelected: (actions) =>
+                          setState(() => selectedActions = actions),
+                      onTimeRangeSelected: (start, end) {
+                        setState(() {
+                          startTime = start;
+                          endTime = end;
+                        });
+                      },
                     ),
                   ],
                 ),
               ),
-            ),
-          ],
+              Expanded(
+                child: Card(
+                  margin: const EdgeInsets.all(8.0),
+                  elevation: 2,
+                  child: Column(
+                    children: [
+                      Expanded(
+                        child: ListView.builder(
+                          controller: _scrollController,
+                          itemCount: messages.length,
+                          itemBuilder: (context, index) {
+                            final message = messages[index];
+                            return MessageBubble(message: message);
+                          },
+                        ),
+                      ),
+                      const Divider(),
+                      Padding(
+                        padding: const EdgeInsets.all(8.0),
+                        child: TextField(
+                          autofocus: false,
+                          controller: _messageController,
+                          focusNode: _focusNode,
+                          decoration: InputDecoration(
+                            hintText: '메시지를 입력하세요...',
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(25),
+                              borderSide: BorderSide(
+                                color: Theme.of(context).colorScheme.primary,
+                              ),
+                            ),
+                            enabledBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(25),
+                              borderSide: BorderSide(
+                                color: Theme.of(context)
+                                    .colorScheme
+                                    .primary
+                                    .withOpacity(0.5),
+                              ),
+                            ),
+                            focusedBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(25),
+                              borderSide: BorderSide(
+                                color: Theme.of(context).colorScheme.primary,
+                                width: 2,
+                              ),
+                            ),
+                            filled: true,
+                            fillColor: Theme.of(context).colorScheme.surface,
+                          ),
+                          onSubmitted: _sendMessage,
+                          onChanged: (value) {
+                            // 필요한 경우 여기에 추가 로직
+                          },
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -514,6 +539,20 @@ class _TargetQuestionControlState extends State<TargetQuestionControl> {
   final MultiSelectController<String> _actionController =
       MultiSelectController<String>();
 
+  // 모든 필수 값이 선택되었는지 확인하는 메서드 추가
+  bool get isValid => selectedGoal != null && selectedActions.isNotEmpty;
+
+  // 상위 위젯에 상태 변경을 알리는 메서드
+  void _notifyParent() {
+    if (isValid) {
+      widget.onGoalSelected(selectedGoal!);
+      widget.onActionsSelected(selectedActions);
+      if (startDate != null && endDate != null) {
+        widget.onTimeRangeSelected(startDate!, endDate!);
+      }
+    }
+  }
+
   @override
   void initState() {
     super.initState();
@@ -537,6 +576,20 @@ class _TargetQuestionControlState extends State<TargetQuestionControl> {
         actionList = actionDocs.docs
             .map((doc) => doc.data() as Map<String, dynamic>)
             .toList();
+
+        // 첫 번째 Goal을 기본값으로 설정
+        if (goalNames.isNotEmpty && selectedGoal == null) {
+          selectedGoal = goalNames[0];
+          // 선택된 Goal의 모든 Action 자동 선택
+          selectedActions = actionList
+              .where((action) => action['goal_name'] == selectedGoal)
+              .map((action) => action['action_name'] as String)
+              .toList();
+
+          // 상위 위젯에 선택 상태 전달
+          widget.onGoalSelected(selectedGoal!);
+          widget.onActionsSelected(selectedActions);
+        }
       });
     } catch (e) {
       print('목표 및 액션 로딩 오류: $e');
@@ -545,69 +598,70 @@ class _TargetQuestionControlState extends State<TargetQuestionControl> {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.all(8.0),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _buildSection(
-            title: 'Goal 선택',
-            subtitle: 'AI Chat 에게 질문하고 싶은 Goal 를 선택하세요',
-            child: DropdownButtonFormField<String>(
-              isDense: true,
-              menuMaxHeight: 150,
-              decoration: InputDecoration(
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(4),
-                ),
-                contentPadding: const EdgeInsets.symmetric(
-                  horizontal: 8,
-                  vertical: 4,
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.all(8.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _buildSection(
+                title: 'Goal 선택',
+                subtitle: 'AI Chat 에게 질문하고 싶은 Goal 를 선택하세요',
+                child: DropdownButtonFormField<String>(
+                  isDense: true,
+                  menuMaxHeight: 150,
+                  value: selectedGoal,
+                  decoration: InputDecoration(
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 4,
+                    ),
+                  ),
+                  items: goalNames.map<DropdownMenuItem<String>>((goalName) {
+                    return DropdownMenuItem(
+                      value: goalName,
+                      child: Text(
+                        goalName,
+                        style: const TextStyle(fontSize: 13),
+                      ),
+                    );
+                  }).toList(),
+                  onChanged: (value) {
+                    setState(() {
+                      selectedGoal = value;
+                      // Goal이 선택되면 해당 Goal의 모든 Action을 자동으로 선택
+                      selectedActions = actionList
+                          .where((action) => action['goal_name'] == value)
+                          .map((action) => action['action_name'] as String)
+                          .toList();
+                    });
+                    if (value != null) {
+                      widget.onGoalSelected(value);
+                      // Action 선택 상태도 상위 위젯에 알림
+                      widget.onActionsSelected(selectedActions);
+                    }
+                  },
                 ),
               ),
-              items: goalNames.map<DropdownMenuItem<String>>((goalName) {
-                return DropdownMenuItem(
-                  value: goalName,
-                  child: Text(
-                    goalName,
-                    style: const TextStyle(fontSize: 13),
-                  ),
-                );
-              }).toList(),
-              onChanged: (value) {
-                setState(() {
-                  selectedGoal = value;
-                  // Goal이 선택되면 해당 Goal의 모든 Action을 자동으로 선택
-                  selectedActions = actionList
-                      .where((action) => action['goal_name'] == value)
-                      .map((action) => action['action_name'] as String)
-                      .toList();
-                });
-                if (value != null) {
-                  widget.onGoalSelected(value);
-                  // Action 선택 상태도 상위 위젯에 알림
-                  widget.onActionsSelected(selectedActions);
-                }
-              },
-            ),
-          ),
-          const SizedBox(height: 12),
-          if (selectedGoal != null)
-            _buildSection(
-              title: 'Action 선택',
-              subtitle: 'AI Chat 에게 질문하고 싶은 Action 을 선택하세요',
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(
-                  border: Border.all(
-                    color: Theme.of(context).primaryColor.withOpacity(0.5),
-                  ),
-                  borderRadius: BorderRadius.circular(4),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Wrap(
+              const SizedBox(height: 12),
+              if (selectedGoal != null)
+                _buildSection(
+                  title: 'Action 선택',
+                  subtitle: 'AI Chat 에게 질문하고 싶은 Action 을 선택하세요',
+                  child: Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                      border: Border.all(
+                        color: Theme.of(context).primaryColor.withOpacity(0.5),
+                      ),
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: Wrap(
                       spacing: 4,
                       runSpacing: 4,
                       children: actionList
@@ -654,89 +708,106 @@ class _TargetQuestionControlState extends State<TargetQuestionControl> {
                         );
                       }).toList(),
                     ),
-                  ],
+                  ),
+                ),
+              const SizedBox(height: 12),
+              _buildSection(
+                title: '기간 설정',
+                subtitle: 'AI Chat 에게 질문하기 위한 날짜 범위를 선택하세요',
+                child: Material(
+                  child: TextButton(
+                    onPressed: () async {
+                      final DateTimeRange? picked = await showDateRangePicker(
+                        context: context,
+                        firstDate: DateTime(DateTime.now().year - 1),
+                        lastDate: DateTime(DateTime.now().year + 1),
+                        initialDateRange: startDate != null && endDate != null
+                            ? DateTimeRange(start: startDate!, end: endDate!)
+                            : DateTimeRange(
+                                start: DateTime.now(),
+                                end: DateTime.now(),
+                              ),
+                        builder: (BuildContext context, Widget? child) {
+                          return Theme(
+                            data: Theme.of(context).copyWith(
+                              colorScheme:
+                                  Theme.of(context).colorScheme.copyWith(
+                                        primary: Theme.of(context).primaryColor,
+                                      ),
+                            ),
+                            child: SizedBox(
+                              width: MediaQuery.of(context).size.width * 0.3,
+                              height: MediaQuery.of(context).size.height * 0.3,
+                              child: child!,
+                            ),
+                          );
+                        },
+                      );
+
+                      if (picked != null) {
+                        setState(() {
+                          startDate = picked.start;
+                          endDate = picked.end;
+                        });
+                        if (startDate != null && endDate != null) {
+                          widget.onTimeRangeSelected(startDate!, endDate!);
+                        }
+                      }
+                    },
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 8),
+                      decoration: BoxDecoration(
+                        border: Border.all(
+                          color:
+                              Theme.of(context).primaryColor.withOpacity(0.5),
+                        ),
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              startDate != null && endDate != null
+                                  ? '${DateFormat('yyyy-MM-dd').format(startDate!)} ~ ${DateFormat('yyyy-MM-dd').format(endDate!)}'
+                                  : '날짜를 선택하세요',
+                              style: TextStyle(
+                                color: startDate != null
+                                    ? Theme.of(context)
+                                        .textTheme
+                                        .bodyLarge
+                                        ?.color
+                                    : Theme.of(context).hintColor,
+                              ),
+                            ),
+                          ),
+                          Icon(
+                            Icons.calendar_today,
+                            color: Theme.of(context).primaryColor,
+                            size: 20,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
                 ),
               ),
-            ),
-          const SizedBox(height: 12),
-          _buildSection(
-            title: '기간 설정',
-            subtitle: 'AI Chat 에게 질문하기 위한 날짜 범위를 선택하세요',
-            child: Material(
-              child: InkWell(
-                onTap: () async {
-                  final DateTimeRange? picked = await showDateRangePicker(
-                    context: context,
-                    firstDate: DateTime(DateTime.now().year - 1),
-                    lastDate: DateTime(DateTime.now().year + 1),
-                    initialDateRange: startDate != null && endDate != null
-                        ? DateTimeRange(start: startDate!, end: endDate!)
-                        : DateTimeRange(
-                            start: DateTime.now(),
-                            end: DateTime.now(),
-                          ),
-                    builder: (BuildContext context, Widget? child) {
-                      return Theme(
-                        data: Theme.of(context).copyWith(
-                          colorScheme: Theme.of(context).colorScheme.copyWith(
-                                primary: Theme.of(context).primaryColor,
-                              ),
-                        ),
-                        child: SizedBox(
-                          width: MediaQuery.of(context).size.width * 0.3,
-                          height: MediaQuery.of(context).size.height * 0.3,
-                          child: child!,
-                        ),
-                      );
-                    },
-                  );
-
-                  if (picked != null) {
-                    setState(() {
-                      startDate = picked.start;
-                      endDate = picked.end;
-                    });
-                    if (startDate != null && endDate != null) {
-                      widget.onTimeRangeSelected(startDate!, endDate!);
-                    }
-                  }
-                },
-                child: Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                  decoration: BoxDecoration(
-                    border: Border.all(
-                      color: Theme.of(context).primaryColor.withOpacity(0.5),
-                    ),
-                    borderRadius: BorderRadius.circular(4),
-                  ),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          startDate != null && endDate != null
-                              ? '${DateFormat('yyyy-MM-dd').format(startDate!)} ~ ${DateFormat('yyyy-MM-dd').format(endDate!)}'
-                              : '날짜를 선택하세요',
-                          style: TextStyle(
-                            color: startDate != null
-                                ? Theme.of(context).textTheme.bodyLarge?.color
-                                : Theme.of(context).hintColor,
-                          ),
-                        ),
-                      ),
-                      Icon(
-                        Icons.calendar_today,
-                        color: Theme.of(context).primaryColor,
-                        size: 20,
-                      ),
-                    ],
-                  ),
-                ),
+            ],
+          ),
+        ),
+        // 필수 값이 모두 선택되지 않았을 때 경고 메시지 표시
+        if (!isValid)
+          Padding(
+            padding: const EdgeInsets.all(8.0),
+            child: Text(
+              '채팅을 시작하기 전에 Goal과 Action을 선택해주세요.',
+              style: TextStyle(
+                color: Theme.of(context).colorScheme.error,
+                fontSize: 12,
               ),
             ),
           ),
-        ],
-      ),
+      ],
     );
   }
 
