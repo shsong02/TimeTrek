@@ -9,6 +9,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:syncfusion_flutter_datepicker/datepicker.dart';
 import 'package:dropdown_search/dropdown_search.dart';
 import 'package:vega_multi_dropdown/multi_dropdown.dart';
+import 'package:intl/intl.dart';
 
 class ChatAIAgent extends StatefulWidget {
   const ChatAIAgent({
@@ -151,89 +152,36 @@ class _ChatAIAgentState extends State<ChatAIAgent> {
                     const Divider(),
                     Padding(
                       padding: const EdgeInsets.all(8.0),
-                      child: MultiTriggerAutocomplete(
-                        optionsAlignment: OptionsAlignment.topStart,
-                        autocompleteTriggers: [
-                          AutocompleteTrigger(
-                            trigger: '#',
-                            optionsViewBuilder: (context, query, controller) {
-                              return Container(
-                                decoration: BoxDecoration(
-                                  color: Colors.white,
-                                  borderRadius: BorderRadius.circular(8),
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: Colors.grey.withOpacity(0.5),
-                                      spreadRadius: 1,
-                                      blurRadius: 4,
-                                    ),
-                                  ],
-                                ),
-                                child: ListView.builder(
-                                  shrinkWrap: true,
-                                  itemCount: scheduleCommands.length,
-                                  itemBuilder: (context, index) {
-                                    final command = scheduleCommands[index];
-                                    return Material(
-                                      color: Colors.transparent,
-                                      child: ListTile(
-                                        title: Text(command),
-                                        onTap: () {
-                                          final autocomplete =
-                                              MultiTriggerAutocomplete.of(
-                                                  context);
-                                          autocomplete.acceptAutocompleteOption(
-                                              command);
-                                        },
-                                        focusColor: Colors.grey[200],
-                                        hoverColor: Colors.grey[200],
-                                      ),
-                                    );
-                                  },
-                                ),
-                              );
-                            },
-                          ),
-                        ],
-                        fieldViewBuilder: (context, controller, focusNode) {
-                          return CallbackShortcuts(
-                            bindings: {
-                              SingleActivator(LogicalKeyboardKey.arrowUp): () =>
-                                  _handleUpArrow(controller),
-                              SingleActivator(LogicalKeyboardKey.arrowDown):
-                                  () => _handleDownArrow(controller),
-                            },
-                            child: TextField(
-                              controller: controller,
-                              focusNode: focusNode,
-                              decoration: InputDecoration(
-                                hintText: '메시지를 입력하세요...',
-                                border: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(25),
-                                  borderSide: BorderSide(
-                                    color: theme.colorScheme.primary,
-                                  ),
-                                ),
-                                enabledBorder: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(25),
-                                  borderSide: BorderSide(
-                                    color: theme.colorScheme.primary
-                                        .withOpacity(0.5),
-                                  ),
-                                ),
-                                focusedBorder: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(25),
-                                  borderSide: BorderSide(
-                                    color: theme.colorScheme.primary,
-                                    width: 2,
-                                  ),
-                                ),
-                                filled: true,
-                                fillColor: theme.colorScheme.surface,
-                              ),
-                              onSubmitted: (text) => _sendMessage(text),
+                      child: TextField(
+                        controller: _messageController,
+                        focusNode: _focusNode,
+                        decoration: InputDecoration(
+                          hintText: '메시지를 입력하세요...',
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(25),
+                            borderSide: BorderSide(
+                              color: theme.colorScheme.primary,
                             ),
-                          );
+                          ),
+                          enabledBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(25),
+                            borderSide: BorderSide(
+                              color: theme.colorScheme.primary.withOpacity(0.5),
+                            ),
+                          ),
+                          focusedBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(25),
+                            borderSide: BorderSide(
+                              color: theme.colorScheme.primary,
+                              width: 2,
+                            ),
+                          ),
+                          filled: true,
+                          fillColor: theme.colorScheme.surface,
+                        ),
+                        onSubmitted: _sendMessage,
+                        onChanged: (value) {
+                          // 필요한 경우 여기에 추가 로직
                         },
                       ),
                     ),
@@ -629,10 +577,16 @@ class _TargetQuestionControlState extends State<TargetQuestionControl> {
               onChanged: (value) {
                 setState(() {
                   selectedGoal = value;
-                  selectedActions = [];
+                  // Goal이 선택되면 해당 Goal의 모든 Action을 자동으로 선택
+                  selectedActions = actionList
+                      .where((action) => action['goal_name'] == value)
+                      .map((action) => action['action_name'] as String)
+                      .toList();
                 });
                 if (value != null) {
                   widget.onGoalSelected(value);
+                  // Action 선택 상태도 상위 위젯에 알림
+                  widget.onActionsSelected(selectedActions);
                 }
               },
             ),
@@ -642,52 +596,65 @@ class _TargetQuestionControlState extends State<TargetQuestionControl> {
             _buildSection(
               title: 'Action 선택',
               subtitle: 'AI Chat 에게 질문하고 싶은 Action 을 선택하세요',
-              child: MultiDropdown<String>(
-                controller: _actionController,
-                items: actionList
-                    .where((action) => action['goal_name'] == selectedGoal)
-                    .map((action) => DropdownItem<String>(
-                          id: action['action_name'],
-                          value: action['action_name'],
-                          label: action['action_name'] as String,
-                          selected: selectedActions.isEmpty
-                              ? true
-                              : selectedActions.contains(action['action_name']),
-                        ))
-                    .toList(),
-                onSelectionChange: (items) {
-                  setState(() {
-                    selectedActions = items.isEmpty
-                        ? actionList
-                            .where(
-                                (action) => action['goal_name'] == selectedGoal)
-                            .map((action) => action['action_name'] as String)
-                            .toList()
-                        : items.toList();
-                  });
-
-                  widget.onActionsSelected(selectedActions);
-                },
-                searchEnabled: true,
-                chipDecoration: ChipDecoration(
-                  backgroundColor:
-                      Theme.of(context).primaryColor.withOpacity(0.1),
-                  labelStyle: TextStyle(
-                    color: Theme.of(context).primaryColor,
-                    fontSize: 12,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  border: Border.all(
+                    color: Theme.of(context).primaryColor.withOpacity(0.5),
                   ),
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                   borderRadius: BorderRadius.circular(4),
                 ),
-                fieldDecoration: FieldDecoration(
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(4),
-                    borderSide: BorderSide(
-                      color: Theme.of(context).primaryColor.withOpacity(0.5),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Wrap(
+                      spacing: 4,
+                      runSpacing: 4,
+                      children: actionList
+                          .where(
+                              (action) => action['goal_name'] == selectedGoal)
+                          .map((action) {
+                        final actionName = action['action_name'] as String;
+                        final isSelected = selectedActions.contains(actionName);
+                        return FilterChip(
+                          label: Text(
+                            actionName,
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: isSelected
+                                  ? Theme.of(context).colorScheme.onPrimary
+                                  : Theme.of(context).colorScheme.onSurface,
+                            ),
+                          ),
+                          selected: isSelected,
+                          onSelected: (bool selected) {
+                            setState(() {
+                              if (selected) {
+                                selectedActions.add(actionName);
+                              } else {
+                                selectedActions.remove(actionName);
+                              }
+                              // 아무것도 선택되지 않았다면 모두 선택
+                              if (selectedActions.isEmpty) {
+                                selectedActions = actionList
+                                    .where((action) =>
+                                        action['goal_name'] == selectedGoal)
+                                    .map((action) =>
+                                        action['action_name'] as String)
+                                    .toList();
+                              }
+                            });
+                            widget.onActionsSelected(selectedActions);
+                          },
+                          backgroundColor:
+                              Theme.of(context).colorScheme.surface,
+                          selectedColor: Theme.of(context).colorScheme.primary,
+                          checkmarkColor:
+                              Theme.of(context).colorScheme.onPrimary,
+                        );
+                      }).toList(),
                     ),
-                  ),
-                  hintText: '모든 Action 선택',
+                  ],
                 ),
               ),
             ),
@@ -695,59 +662,76 @@ class _TargetQuestionControlState extends State<TargetQuestionControl> {
           _buildSection(
             title: '기간 설정',
             subtitle: 'AI Chat 에게 질문하기 위한 날짜 범위를 선택하세요',
-            child: TextFormField(
-              decoration: InputDecoration(
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(4),
-                ),
-                contentPadding: const EdgeInsets.symmetric(
-                  horizontal: 8,
-                  vertical: 4,
-                ),
-                suffixIcon: IconButton(
-                  icon: const Icon(Icons.calendar_today),
-                  onPressed: () {
-                    showDialog(
-                      context: context,
-                      builder: (context) => Dialog(
+            child: Material(
+              child: InkWell(
+                onTap: () async {
+                  final DateTimeRange? picked = await showDateRangePicker(
+                    context: context,
+                    firstDate: DateTime(DateTime.now().year - 1),
+                    lastDate: DateTime(DateTime.now().year + 1),
+                    initialDateRange: startDate != null && endDate != null
+                        ? DateTimeRange(start: startDate!, end: endDate!)
+                        : DateTimeRange(
+                            start: DateTime.now(),
+                            end: DateTime.now(),
+                          ),
+                    builder: (BuildContext context, Widget? child) {
+                      return Theme(
+                        data: Theme.of(context).copyWith(
+                          colorScheme: Theme.of(context).colorScheme.copyWith(
+                                primary: Theme.of(context).primaryColor,
+                              ),
+                        ),
                         child: SizedBox(
-                          height: 400,
-                          width: 400,
-                          child: SfDateRangePicker(
-                            onSelectionChanged:
-                                (DateRangePickerSelectionChangedArgs args) {
-                              if (args.value is PickerDateRange) {
-                                final range = args.value as PickerDateRange;
-                                setState(() {
-                                  startDate = range.startDate;
-                                  endDate = range.endDate ?? range.startDate;
-                                });
-                                if (startDate != null && endDate != null) {
-                                  widget.onTimeRangeSelected(
-                                      startDate!, endDate!);
-                                }
-                              }
-                            },
-                            selectionMode: DateRangePickerSelectionMode.range,
-                            initialSelectedRange:
-                                PickerDateRange(startDate, endDate),
-                            showActionButtons: true,
-                            cancelText: 'CANCEL',
-                            confirmText: 'OK',
-                            onCancel: () => Navigator.pop(context),
-                            onSubmit: (value) => Navigator.pop(context),
+                          width: MediaQuery.of(context).size.width * 0.3,
+                          height: MediaQuery.of(context).size.height * 0.3,
+                          child: child!,
+                        ),
+                      );
+                    },
+                  );
+
+                  if (picked != null) {
+                    setState(() {
+                      startDate = picked.start;
+                      endDate = picked.end;
+                    });
+                    if (startDate != null && endDate != null) {
+                      widget.onTimeRangeSelected(startDate!, endDate!);
+                    }
+                  }
+                },
+                child: Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  decoration: BoxDecoration(
+                    border: Border.all(
+                      color: Theme.of(context).primaryColor.withOpacity(0.5),
+                    ),
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          startDate != null && endDate != null
+                              ? '${DateFormat('yyyy-MM-dd').format(startDate!)} ~ ${DateFormat('yyyy-MM-dd').format(endDate!)}'
+                              : '날짜를 선택하세요',
+                          style: TextStyle(
+                            color: startDate != null
+                                ? Theme.of(context).textTheme.bodyLarge?.color
+                                : Theme.of(context).hintColor,
                           ),
                         ),
                       ),
-                    );
-                  },
+                      Icon(
+                        Icons.calendar_today,
+                        color: Theme.of(context).primaryColor,
+                        size: 20,
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-              readOnly: true,
-              controller: TextEditingController(
-                text: startDate != null && endDate != null
-                    ? '${startDate?.toString().split(' ')[0]} ~ ${endDate?.toString().split(' ')[0]}'
-                    : '',
               ),
             ),
           ),
