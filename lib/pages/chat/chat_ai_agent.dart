@@ -594,6 +594,17 @@ class _ChatAIAgentState extends State<ChatAIAgent> {
           .map((entry) => entry.value as Map<String, dynamic>)
           .toList();
 
+      // 현재 goal의 action 개수를 미리 계산
+      int currentOrder = 0;
+      if (actionUpdates.isNotEmpty) {
+        final goalName = actionUpdates[0]['goal_name'] as String;
+        final currentCount = await actionListRef
+            .where('goal_name', isEqualTo: goalName)
+            .count()
+            .get();
+        currentOrder = currentCount.count ?? 0;
+      }
+
       for (final action in actionUpdates) {
         final type = action['type'] as String;
         final actionName = action['action_name'] as String;
@@ -622,20 +633,17 @@ class _ChatAIAgentState extends State<ChatAIAgent> {
               throw Exception('Action already exists: $actionName');
             }
 
-            // 현재 goal의 action 개수 계산
-            final currentCount = await actionListRef
-                .where('goal_name', isEqualTo: goalName)
-                .count()
-                .get();
-
             final newActionDoc = actionListRef.doc();
+            currentOrder++; // 각 새로운 액션마다 순서 증가
             batch.set(newActionDoc, {
               'action_name': actionName,
               'action_reason': action['action_reason'],
+              'action_description': action['action_description'],
               'action_execution_time': action['action_execution_time'],
+              'action_status': 'created',
               'goal_name': goalName,
               'timegroup': timegroup,
-              'order': (currentCount?.count ?? 0) + 1,
+              'order': currentOrder,
               'created_at': FieldValue.serverTimestamp(),
             });
             break;
