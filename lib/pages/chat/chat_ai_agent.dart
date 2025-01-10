@@ -1172,103 +1172,121 @@ class CustomMultiSelect extends StatefulWidget {
 class _CustomMultiSelectState extends State<CustomMultiSelect> {
   bool _isExpanded = false;
   final LayerLink _layerLink = LayerLink();
+  OverlayEntry? _overlayEntry;
+
+  @override
+  void dispose() {
+    _removeOverlay();
+    super.dispose();
+  }
+
+  void _removeOverlay() {
+    _overlayEntry?.remove();
+    _overlayEntry = null;
+  }
+
+  void _toggleDropdown() {
+    if (_isExpanded) {
+      _removeOverlay();
+    } else {
+      _createOverlay();
+    }
+    setState(() {
+      _isExpanded = !_isExpanded;
+    });
+  }
+
+  void _createOverlay() {
+    _overlayEntry = OverlayEntry(
+      builder: (context) => Positioned(
+        width: MediaQuery.of(context).size.width,
+        child: CompositedTransformFollower(
+          link: _layerLink,
+          targetAnchor: Alignment.bottomLeft,
+          followerAnchor: Alignment.topLeft,
+          child: Padding(
+            padding: const EdgeInsets.only(top: 4),
+            child: Material(
+              elevation: 4,
+              borderRadius: BorderRadius.circular(4),
+              child: Container(
+                constraints: const BoxConstraints(maxHeight: 200),
+                child: ListView.builder(
+                  shrinkWrap: true,
+                  itemCount: widget.items.length,
+                  itemBuilder: (context, index) {
+                    final item = widget.items[index];
+                    final isSelected = widget.selectedItems.contains(item);
+
+                    return CheckboxListTile(
+                      title: Text(item, style: const TextStyle(fontSize: 13)),
+                      value: isSelected,
+                      dense: true,
+                      onChanged: (bool? value) {
+                        if (item == 'ALL') {
+                          widget.onChanged(['ALL']);
+                        } else {
+                          final newSelection =
+                              List<String>.from(widget.selectedItems);
+                          if (value == true) {
+                            newSelection.remove('ALL');
+                            newSelection.add(item);
+                          } else {
+                            newSelection.remove(item);
+                          }
+                          widget.onChanged(
+                              newSelection.isEmpty ? ['ALL'] : newSelection);
+                        }
+                      },
+                    );
+                  },
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    Overlay.of(context).insert(_overlayEntry!);
+  }
 
   @override
   Widget build(BuildContext context) {
     return CompositedTransformTarget(
       link: _layerLink,
-      child: Column(
-        children: [
-          GestureDetector(
-            onTap: () {
-              setState(() {
-                _isExpanded = !_isExpanded;
-              });
-            },
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-              decoration: BoxDecoration(
-                border: Border.all(color: Colors.grey),
-                borderRadius: BorderRadius.circular(4),
-              ),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Wrap(
-                      spacing: 4,
-                      runSpacing: 4,
-                      children: widget.selectedItems.map((item) {
-                        return Chip(
-                          label:
-                              Text(item, style: const TextStyle(fontSize: 12)),
-                          onDeleted: () {
-                            final newSelection =
-                                List<String>.from(widget.selectedItems)
-                                  ..remove(item);
-                            widget.onChanged(
-                                newSelection.isEmpty ? ['ALL'] : newSelection);
-                          },
-                        );
-                      }).toList(),
-                    ),
-                  ),
-                  Icon(_isExpanded
-                      ? Icons.arrow_drop_up
-                      : Icons.arrow_drop_down),
-                ],
-              ),
-            ),
+      child: GestureDetector(
+        onTap: _toggleDropdown,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+          decoration: BoxDecoration(
+            border: Border.all(color: Colors.grey),
+            borderRadius: BorderRadius.circular(4),
           ),
-          if (_isExpanded)
-            CompositedTransformFollower(
-              link: _layerLink,
-              targetAnchor: Alignment.bottomLeft,
-              followerAnchor: Alignment.topLeft,
-              child: Padding(
-                padding: const EdgeInsets.only(top: 4),
-                child: Material(
-                  elevation: 4,
-                  borderRadius: BorderRadius.circular(4),
-                  child: Container(
-                    constraints: const BoxConstraints(maxHeight: 200),
-                    width: MediaQuery.of(context).size.width,
-                    child: ListView.builder(
-                      shrinkWrap: true,
-                      itemCount: widget.items.length,
-                      itemBuilder: (context, index) {
-                        final item = widget.items[index];
-                        final isSelected = widget.selectedItems.contains(item);
-
-                        return CheckboxListTile(
-                          title:
-                              Text(item, style: const TextStyle(fontSize: 13)),
-                          value: isSelected,
-                          dense: true,
-                          onChanged: (bool? value) {
-                            if (item == 'ALL') {
-                              widget.onChanged(['ALL']);
-                            } else {
-                              final newSelection =
-                                  List<String>.from(widget.selectedItems);
-                              if (value == true) {
-                                newSelection.remove('ALL');
-                                newSelection.add(item);
-                              } else {
-                                newSelection.remove(item);
-                              }
-                              widget.onChanged(newSelection.isEmpty
-                                  ? ['ALL']
-                                  : newSelection);
-                            }
-                          },
-                        );
+          child: Row(
+            children: [
+              Expanded(
+                child: Wrap(
+                  spacing: 4,
+                  runSpacing: 4,
+                  children: widget.selectedItems.map((item) {
+                    return Chip(
+                      label: Text(item, style: const TextStyle(fontSize: 12)),
+                      onDeleted: () {
+                        final newSelection =
+                            List<String>.from(widget.selectedItems)
+                              ..remove(item);
+                        widget.onChanged(
+                            newSelection.isEmpty ? ['ALL'] : newSelection);
                       },
-                    ),
-                  ),
+                    );
+                  }).toList(),
                 ),
               ),
-            ),
-        ],
+              Icon(_isExpanded ? Icons.arrow_drop_up : Icons.arrow_drop_down),
+            ],
+          ),
+        ),
       ),
     );
   }
