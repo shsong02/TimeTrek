@@ -381,11 +381,13 @@ class _ChatAIAgentState extends State<ChatAIAgent> {
           if (responseList.isNotEmpty) {
             final responseData = responseList[0];
 
-            // chat_response 처리 (오타 수정: chat_reponse -> chat_response)
-            final chatResponse = responseData['chat_response'];
-            print('Chat Response Type: ${chatResponse.runtimeType}');
-            print('Chat Response Value: $chatResponse');
+            // check_editable_data가 true인 경우에만 액션 업데이트 처리
+            if (responseData['check_editable_data'] == true) {
+              await _processActionUpdates(responseData);
+            }
 
+            // 기존 채팅 응답 처리
+            final chatResponse = responseData['chat_response'];
             if (chatResponse != null) {
               setState(() {
                 messages.add(ChatMessage(
@@ -394,16 +396,7 @@ class _ChatAIAgentState extends State<ChatAIAgent> {
                   timestamp: DateTime.now(),
                 ));
               });
-            } else {
-              print('Chat Response is null');
-              throw Exception('Invalid chat response format');
             }
-
-            // check_editable_data 처리
-            final checkEditableData = responseData['check_editable_data'];
-            print('Check Editable Data: $checkEditableData');
-
-            _scrollToBottom();
           } else {
             throw Exception('Empty response list');
           }
@@ -503,6 +496,104 @@ class _ChatAIAgentState extends State<ChatAIAgent> {
     } catch (e, stackTrace) {
       print('Error in _processEditActions: $e'); // 에러 메시지
       print('Stack trace: $stackTrace'); // 스택 트레이스 출력
+    }
+  }
+
+  Future<void> _processActionUpdates(Map<String, dynamic> responseData) async {
+    final db = FirebaseFirestore.instance;
+    final batch = db.batch();
+    final actionListRef = db.collection('action_list');
+
+    try {
+      // 숫자 키를 가진 항목들만 필터링
+      final actionUpdates = responseData.entries
+          .where((entry) => RegExp(r'^\d+$').hasMatch(entry.key))
+          .map((entry) => entry.value as Map<String, dynamic>)
+          .toList();
+
+      for (final action in actionUpdates) {
+        final type = action['type'] as String;
+        final actionName = action['action_name'] as String;
+        final goalName = action['goal_name'] as String;
+
+        // goal_list에서 timegroup 가져오기
+        final goalDoc = await db
+            .collection('goal_list')
+            .where('name', isEqualTo: goalName)
+            .get();
+
+        if (goalDoc.docs.isEmpty) {
+          throw Exception('Goal not found: $goalName');
+        }
+
+        final timegroup = goalDoc.docs.first.data()['timegroup'] as String;
+
+        switch (type) {
+          case 'create':
+            // 이미 존재하는지 확인
+            final existingDoc = await actionListRef
+                .where('action_name', isEqualTo: actionName)
+                .get();
+
+            if (existingDoc.docs.isNotEmpty) {
+              throw Exception('Action already exists: $actionName');
+            }
+
+            // 현재 goal의 action 개수 계산
+            final currentCount = await actionListRef
+                .where('goal_name', isEqualTo: goalName)
+                .count()
+                .get();
+
+            final newActionDoc = actionListRef.doc();
+            batch.set(newActionDoc, {
+              'action_name': actionName,
+              'action_reason': action['action_reason'],
+              'action_execution_time': action['action_execution_time'],
+              'goal_name': goalName,
+              'timegroup': timegroup,
+              'order': (currentCount?.count ?? 0) + 1,
+              'created_at': FieldValue.serverTimestamp(),
+            });
+            break;
+
+          case 'delete':
+            final docToDelete = await actionListRef
+                .where('action_name', isEqualTo: actionName)
+                .get();
+
+            if (docToDelete.docs.isEmpty) {
+              throw Exception('Action not found: $actionName');
+            }
+
+            batch.delete(docToDelete.docs.first.reference);
+            break;
+
+          case 'edit':
+            final docToEdit = await actionListRef
+                .where('action_name', isEqualTo: actionName)
+                .get();
+
+            if (docToEdit.docs.isEmpty) {
+              throw Exception('Action not found: $actionName');
+            }
+
+            batch.update(docToEdit.docs.first.reference, {
+              'action_reason': action['action_reason'],
+              'action_execution_time': action['action_execution_time'],
+              'updated_at': FieldValue.serverTimestamp(),
+            });
+            break;
+        }
+      }
+
+      await batch.commit();
+
+      // 변경 사항 적용 후 데이터 다시 로드
+      await _loadGoalsAndActions();
+    } catch (e) {
+      print('Error processing action updates: $e');
+      throw Exception('Failed to process action updates: $e');
     }
   }
 }
