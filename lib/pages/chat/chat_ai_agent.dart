@@ -10,6 +10,7 @@ import 'package:syncfusion_flutter_datepicker/datepicker.dart';
 import 'package:dropdown_search/dropdown_search.dart';
 import 'package:vega_multi_dropdown/multi_dropdown.dart';
 import 'package:intl/intl.dart';
+import 'package:flutter_markdown/flutter_markdown.dart';
 
 class ChatAIAgent extends StatefulWidget {
   const ChatAIAgent({
@@ -47,8 +48,8 @@ class _ChatAIAgentState extends State<ChatAIAgent> {
   DateTime? startTime;
   DateTime? endTime;
 
-  // API 응답 처리를 위한 타입 정의
-  Map<String, dynamic>? lastApiResponse;
+  // API 응답 처리를 위한 타입 정의 수정
+  dynamic lastApiResponse;
 
   // Firestore 데이터를 저장할 변수들
   List<String> goalNames = [];
@@ -63,6 +64,24 @@ class _ChatAIAgentState extends State<ChatAIAgent> {
       }
     });
     _loadGoalsAndActions();
+
+    // 초기 안내 메시지 추가
+    messages.add(ChatMessage(
+      text: '''AI Agent는 다음 목적들 중 하나를 해결하기 위해 동작합니다:
+
+- 실패 원인 분석 및 재설정
+- 마일스톤 목표 설정 및 계획
+- 실시간 질문 및 조언 제공
+- 개인화된 일정 관리
+- 성과 기록 및 피드백
+- 맞춤형 동기 부여 및 알림
+- 목표 실행 전략 추천
+- 감정 상태 관리 및 스트레스 완화
+
+위 목적들과 관련된 질문을 해주시면 도움을 드리도록 하겠습니다.''',
+      isUser: false,
+      timestamp: DateTime.now(),
+    ));
   }
 
   Future<void> _loadGoalsAndActions() async {
@@ -250,61 +269,61 @@ class _ChatAIAgentState extends State<ChatAIAgent> {
           goalInfo = goalDoc.docs.first.data();
           // Timestamp를 ISO 문자열로 변환
           if (goalInfo!['created_at'] != null) {
-            goalInfo!['created_at'] = (goalInfo!['created_at'] as Timestamp)
+            goalInfo['created_at'] = (goalInfo['created_at'] as Timestamp)
                 .toDate()
                 .toIso8601String();
           }
         }
-
-        // 디버깅을 위한 로그 추가
-        print('Selected Goal: $selectedGoal');
-        print('Goal Info: $goalInfo');
       }
 
       // action_info 가져오기
       if (selectedActions.isNotEmpty) {
-        // 디버깅을 위한 로그 추가
-        print('Selected Actions: $selectedActions');
-
         final Query query = db.collection('action_list');
+        QuerySnapshot actionDocs;
 
         if (selectedActions.length ==
             actionList
                 .where((action) => action['goal_name'] == selectedGoal)
                 .length) {
-          // 모든 Action이 선택된 경우: goal_name으로만 필터링
-          final actionDocs =
+          actionDocs =
               await query.where('goal_name', isEqualTo: selectedGoal).get();
-          actionInfo = actionDocs.docs
-              .map((doc) => doc.data() as Map<String, dynamic>)
-              .toList();
         } else {
-          // 특정 Action들이 선택된 경우: goal_name과 action_name으로 필터링
-          final actionDocs = await query
+          actionDocs = await query
               .where('goal_name', isEqualTo: selectedGoal)
               .where('action_name', whereIn: selectedActions)
               .get();
-          actionInfo = actionDocs.docs
-              .map((doc) => doc.data() as Map<String, dynamic>)
-              .toList();
         }
 
-        print('Action Info: $actionInfo');
+        actionInfo = actionDocs.docs.map((doc) {
+          final data = doc.data() as Map<String, dynamic>;
+          // Timestamp 필드들을 ISO 문자열로 변환
+          if (data['created_at'] != null) {
+            data['created_at'] =
+                (data['created_at'] as Timestamp).toDate().toIso8601String();
+          }
+          if (data['fixed_start_time'] != null) {
+            data['fixed_start_time'] = (data['fixed_start_time'] as Timestamp)
+                .toDate()
+                .toIso8601String();
+          }
+          if (data['fixed_end_time'] != null) {
+            data['fixed_end_time'] = (data['fixed_end_time'] as Timestamp)
+                .toDate()
+                .toIso8601String();
+          }
+          return data;
+        }).toList();
       }
 
       // calendar_event 가져오기
       if (selectedActions.isNotEmpty) {
-        // 기본 쿼리 시작
         Query query = db
             .collection('calendar_event')
             .where('action_name', whereIn: selectedActions);
 
-        // startTime이 있는 경우에만 조건 추가
         if (startTime != null) {
           query = query.where('startTime', isGreaterThanOrEqualTo: startTime);
         }
-
-        // endTime이 있는 경우에만 조건 추가
         if (endTime != null) {
           query = query.where('endTime', isLessThanOrEqualTo: endTime);
         }
@@ -312,14 +331,17 @@ class _ChatAIAgentState extends State<ChatAIAgent> {
         final calendarDocs = await query.get();
         calendarEvents = calendarDocs.docs.map((doc) {
           final data = doc.data() as Map<String, dynamic>;
-          // Timestamp를 ISO 문자열로 변환
-          if (data['startTime'] != null) {
-            data['startTime'] =
-                (data['startTime'] as Timestamp).toDate().toIso8601String();
-          }
-          if (data['endTime'] != null) {
-            data['endTime'] =
-                (data['endTime'] as Timestamp).toDate().toIso8601String();
+          // Timestamp 필드들을 ISO 문자열로 변환
+          final timestampFields = [
+            'startTime',
+            'endTime',
+            'reminder_timestamp'
+          ];
+          for (final field in timestampFields) {
+            if (data[field] != null) {
+              data[field] =
+                  (data[field] as Timestamp).toDate().toIso8601String();
+            }
           }
           return data;
         }).toList();
@@ -342,33 +364,64 @@ class _ChatAIAgentState extends State<ChatAIAgent> {
         'calendar_event': calendarEvents,
         'chat_history': chatHistory,
         'chat': text,
+        'current_time': DateTime.now().toIso8601String(),
       };
 
       final response = await http.post(
         Uri.parse('https://shsong83.app.n8n.cloud/webhook-test/chat-message'),
-        body: jsonEncode(requestBody), // JSON 문자열로 인코딩
-        headers: {'Content-Type': 'application/json'}, // 헤더 추가
+        body: jsonEncode(requestBody),
+        headers: {'Content-Type': 'application/json'},
       );
 
       if (response.statusCode == 200) {
-        final responseData = jsonDecode(response.body);
-        lastApiResponse = responseData;
+        try {
+          print('Raw API Response: ${response.body}');
 
-        // 채팅 응답 표시
-        setState(() {
-          messages.add(ChatMessage(
-            text: responseData['chat_response'],
-            isUser: false,
-            timestamp: DateTime.now(),
-          ));
-        });
+          final List<dynamic> responseList = jsonDecode(response.body);
+          if (responseList.isNotEmpty) {
+            final responseData = responseList[0];
 
-        // edit_action 처리
-        if (responseData['edit_action'] != null) {
-          _processEditActions(responseData['edit_action']);
+            // chat_response 처리 (오타 수정: chat_reponse -> chat_response)
+            final chatResponse = responseData['chat_response'];
+            print('Chat Response Type: ${chatResponse.runtimeType}');
+            print('Chat Response Value: $chatResponse');
+
+            if (chatResponse != null) {
+              setState(() {
+                messages.add(ChatMessage(
+                  text: chatResponse.toString(),
+                  isUser: false,
+                  timestamp: DateTime.now(),
+                ));
+              });
+            } else {
+              print('Chat Response is null');
+              throw Exception('Invalid chat response format');
+            }
+
+            // check_editable_data 처리
+            final checkEditableData = responseData['check_editable_data'];
+            print('Check Editable Data: $checkEditableData');
+
+            _scrollToBottom();
+          } else {
+            throw Exception('Empty response list');
+          }
+        } catch (e, stackTrace) {
+          print('Error processing API response: $e');
+          print('Stack trace: $stackTrace');
+
+          setState(() {
+            messages.add(ChatMessage(
+              text: '죄송합니다. 응답을 처리하는 중에 오류가 발생했습니다.\n오류 내용: $e',
+              isUser: false,
+              timestamp: DateTime.now(),
+            ));
+          });
         }
-
-        _scrollToBottom();
+      } else {
+        print('API Error: Status Code ${response.statusCode}');
+        print('API Error Response: ${response.body}');
       }
     } catch (e) {
       print('Error sending message: $e');
@@ -440,9 +493,17 @@ class _ChatAIAgentState extends State<ChatAIAgent> {
     );
   }
 
-  void _processEditActions(List<Map<String, dynamic>> actions) {
-    // 디버깅을 위한 로그 추가
-    print('현재입(create, delete, edit)에 따른 처리');
+  void _processEditActions(List<dynamic> actions) {
+    try {
+      print('Processing Edit Actions: $actions'); // edit_action 처리 시작
+      for (final action in actions) {
+        print('Processing action: $action'); // 각 action 처리
+        print('Action Type: ${action.runtimeType}'); // action 타입 확인
+      }
+    } catch (e, stackTrace) {
+      print('Error in _processEditActions: $e'); // 에러 메시지
+      print('Stack trace: $stackTrace'); // 스택 트레이스 출력
+    }
   }
 }
 
@@ -472,6 +533,9 @@ class MessageBubble extends StatelessWidget {
       child: Container(
         margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        constraints: BoxConstraints(
+          maxWidth: MediaQuery.of(context).size.width * 0.8,
+        ),
         decoration: BoxDecoration(
           color: message.isUser
               ? theme.colorScheme.primary
@@ -490,14 +554,59 @@ class MessageBubble extends StatelessWidget {
                 : theme.colorScheme.outline.withOpacity(0.2),
           ),
         ),
-        child: Text(
-          message.text,
-          style: theme.textTheme.bodyMedium?.copyWith(
-            color: message.isUser
-                ? theme.colorScheme.onPrimary
-                : theme.colorScheme.onSurface,
-          ),
-        ),
+        child: message.isUser
+            ? Text(
+                message.text,
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: theme.colorScheme.onPrimary,
+                ),
+              )
+            : SelectableText.rich(
+                TextSpan(
+                  children: [
+                    WidgetSpan(
+                      child: MarkdownBody(
+                        data: message.text,
+                        styleSheet: MarkdownStyleSheet(
+                          p: theme.textTheme.bodyMedium?.copyWith(
+                            color: theme.colorScheme.onSurface,
+                          ),
+                          h1: theme.textTheme.headlineMedium?.copyWith(
+                            color: theme.colorScheme.onSurface,
+                            fontWeight: FontWeight.bold,
+                          ),
+                          h2: theme.textTheme.titleLarge?.copyWith(
+                            color: theme.colorScheme.onSurface,
+                            fontWeight: FontWeight.bold,
+                          ),
+                          h3: theme.textTheme.titleMedium?.copyWith(
+                            color: theme.colorScheme.onSurface,
+                            fontWeight: FontWeight.bold,
+                          ),
+                          listBullet: theme.textTheme.bodyMedium?.copyWith(
+                            color: theme.colorScheme.onSurface,
+                          ),
+                          code: theme.textTheme.bodyMedium?.copyWith(
+                            color: theme.colorScheme.onSurface,
+                            backgroundColor: theme.colorScheme.surfaceVariant,
+                            fontFamily: 'monospace',
+                          ),
+                          codeblockDecoration: BoxDecoration(
+                            color: theme.colorScheme.surfaceVariant,
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          strong: theme.textTheme.bodyMedium?.copyWith(
+                            color: theme.colorScheme.onSurface,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        selectable: false, // 마크다운 자체의 선택 기능 비활성화
+                      ),
+                    ),
+                  ],
+                ),
+                style: theme.textTheme.bodyMedium,
+              ),
       ),
     );
   }
