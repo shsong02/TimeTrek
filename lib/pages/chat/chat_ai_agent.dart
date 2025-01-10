@@ -34,6 +34,7 @@ class _ChatAIAgentState extends State<ChatAIAgent> {
   final List<ChatMessage> messages = [];
   final TextEditingController _messageController = TextEditingController();
   final FocusNode _focusNode = FocusNode();
+  final FocusNode _keyboardListenerFocusNode = FocusNode();
   final ScrollController _scrollController = ScrollController();
 
   // 자동완성 트리거 옵션들
@@ -54,6 +55,9 @@ class _ChatAIAgentState extends State<ChatAIAgent> {
   // Firestore 데이터를 저장할 변수들
   List<String> goalNames = [];
   List<Map<String, dynamic>> actionList = [];
+
+  // 로딩 상태 변수 추가
+  bool _isLoading = false;
 
   @override
   void initState() {
@@ -125,6 +129,7 @@ class _ChatAIAgentState extends State<ChatAIAgent> {
   void dispose() {
     _messageController.dispose();
     _focusNode.dispose();
+    _keyboardListenerFocusNode.dispose();
     super.dispose();
   }
 
@@ -179,53 +184,124 @@ class _ChatAIAgentState extends State<ChatAIAgent> {
                   child: Column(
                     children: [
                       Expanded(
-                        child: ListView.builder(
-                          controller: _scrollController,
-                          itemCount: messages.length,
-                          itemBuilder: (context, index) {
-                            final message = messages[index];
-                            return MessageBubble(message: message);
-                          },
+                        child: Stack(
+                          children: [
+                            ListView.builder(
+                              controller: _scrollController,
+                              itemCount: messages.length,
+                              itemBuilder: (context, index) {
+                                final message = messages[index];
+                                return MessageBubble(message: message);
+                              },
+                            ),
+                            if (_isLoading)
+                              Positioned(
+                                bottom: 8,
+                                left: 8,
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 16,
+                                    vertical: 8,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color:
+                                        Theme.of(context).colorScheme.surface,
+                                    borderRadius: BorderRadius.circular(16),
+                                    boxShadow: [
+                                      BoxShadow(
+                                        color: Theme.of(context)
+                                            .shadowColor
+                                            .withOpacity(0.1),
+                                        blurRadius: 4,
+                                        offset: const Offset(0, 2),
+                                      ),
+                                    ],
+                                  ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      SizedBox(
+                                        width: 16,
+                                        height: 16,
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2,
+                                          valueColor:
+                                              AlwaysStoppedAnimation<Color>(
+                                            Theme.of(context)
+                                                .colorScheme
+                                                .primary,
+                                          ),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Text(
+                                        '응답 대기 중...',
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          color: Theme.of(context)
+                                              .colorScheme
+                                              .onSurface,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                          ],
                         ),
                       ),
                       const Divider(),
                       Padding(
                         padding: const EdgeInsets.all(8.0),
-                        child: TextField(
-                          autofocus: false,
-                          controller: _messageController,
-                          focusNode: _focusNode,
-                          decoration: InputDecoration(
-                            hintText: '메시지를 입력하세요...',
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(25),
-                              borderSide: BorderSide(
-                                color: Theme.of(context).colorScheme.primary,
-                              ),
-                            ),
-                            enabledBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(25),
-                              borderSide: BorderSide(
-                                color: Theme.of(context)
-                                    .colorScheme
-                                    .primary
-                                    .withOpacity(0.5),
-                              ),
-                            ),
-                            focusedBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(25),
-                              borderSide: BorderSide(
-                                color: Theme.of(context).colorScheme.primary,
-                                width: 2,
-                              ),
-                            ),
-                            filled: true,
-                            fillColor: Theme.of(context).colorScheme.surface,
-                          ),
-                          onSubmitted: _sendMessage,
-                          onChanged: (value) {
-                            // 필요한 경우 여기에 추가 로직
+                        child: RawKeyboardListener(
+                          focusNode: _keyboardListenerFocusNode,
+                          onKey: (RawKeyEvent event) {
+                            if (event is RawKeyDownEvent) {
+                              if (event.logicalKey ==
+                                  LogicalKeyboardKey.arrowUp) {
+                                _handleUpArrow(_messageController);
+                              } else if (event.logicalKey ==
+                                  LogicalKeyboardKey.arrowDown) {
+                                _handleDownArrow(_messageController);
+                              }
+                            }
                           },
+                          child: TextField(
+                            autofocus: false,
+                            controller: _messageController,
+                            focusNode: _focusNode,
+                            decoration: InputDecoration(
+                              hintText: '메시지를 입력하세요...',
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(25),
+                                borderSide: BorderSide(
+                                  color: Theme.of(context).colorScheme.primary,
+                                ),
+                              ),
+                              enabledBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(25),
+                                borderSide: BorderSide(
+                                  color: Theme.of(context)
+                                      .colorScheme
+                                      .primary
+                                      .withOpacity(0.5),
+                                ),
+                              ),
+                              focusedBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(25),
+                                borderSide: BorderSide(
+                                  color: Theme.of(context).colorScheme.primary,
+                                  width: 2,
+                                ),
+                              ),
+                              filled: true,
+                              fillColor: Theme.of(context).colorScheme.surface,
+                            ),
+                            onSubmitted: _sendMessage,
+                            onChanged: (value) {
+                              // 필요한 경우 여기에 추가 로직
+                            },
+                          ),
                         ),
                       ),
                     ],
@@ -248,6 +324,7 @@ class _ChatAIAgentState extends State<ChatAIAgent> {
         isUser: true,
         timestamp: DateTime.now(),
       ));
+      _isLoading = true; // 로딩 시작
     });
 
     _messageController.clear();
@@ -368,7 +445,8 @@ class _ChatAIAgentState extends State<ChatAIAgent> {
       };
 
       final response = await http.post(
-        Uri.parse('https://shsong83.app.n8n.cloud/webhook-test/chat-message'),
+        Uri.parse('https://shsong83.app.n8n.cloud/webhook/chat-message'),
+        // Uri.parse('https://shsong83.app.n8n.cloud/webhook-test/chat-message'),
         body: jsonEncode(requestBody),
         headers: {'Content-Type': 'application/json'},
       );
@@ -395,6 +473,7 @@ class _ChatAIAgentState extends State<ChatAIAgent> {
                   isUser: false,
                   timestamp: DateTime.now(),
                 ));
+                _scrollToBottom();
               });
             }
           } else {
@@ -434,6 +513,10 @@ class _ChatAIAgentState extends State<ChatAIAgent> {
           duration: const Duration(seconds: 3),
         ),
       );
+    } finally {
+      setState(() {
+        _isLoading = false; // 로딩 종료
+      });
     }
   }
 
@@ -455,9 +538,9 @@ class _ChatAIAgentState extends State<ChatAIAgent> {
       _currentInputCache = controller.text;
     }
 
-    // 유저 메시지만 필터링
+    // 최근 5개의 유저 메시지만 필터링
     final userMessages =
-        messages.where((m) => m.isUser).toList().reversed.toList();
+        messages.where((m) => m.isUser).toList().reversed.take(5).toList();
 
     if (_messageHistoryIndex < userMessages.length - 1) {
       _messageHistoryIndex++;
@@ -474,7 +557,7 @@ class _ChatAIAgentState extends State<ChatAIAgent> {
     if (_messageHistoryIndex > 0) {
       _messageHistoryIndex--;
       final userMessages =
-          messages.where((m) => m.isUser).toList().reversed.toList();
+          messages.where((m) => m.isUser).toList().reversed.take(5).toList();
       controller.text = userMessages[_messageHistoryIndex].text;
     } else {
       _messageHistoryIndex = -1;
@@ -581,7 +664,6 @@ class _ChatAIAgentState extends State<ChatAIAgent> {
             batch.update(docToEdit.docs.first.reference, {
               'action_reason': action['action_reason'],
               'action_execution_time': action['action_execution_time'],
-              'updated_at': FieldValue.serverTimestamp(),
             });
             break;
         }
@@ -808,6 +890,17 @@ class _TargetQuestionControlState extends State<TargetQuestionControl> {
               _buildSection(
                 title: 'Goal 선택',
                 subtitle: 'AI Chat 에게 질문하고 싶은 Goal 를 선택하세요',
+                onRefresh: () async {
+                  await _loadGoalsAndActions();
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('데이터가 새로고침되었습니다'),
+                        duration: Duration(seconds: 1),
+                      ),
+                    );
+                  }
+                },
                 child: DropdownButtonFormField<String>(
                   isDense: true,
                   menuMaxHeight: 150,
@@ -1015,19 +1108,34 @@ class _TargetQuestionControlState extends State<TargetQuestionControl> {
     required String title,
     required String subtitle,
     required Widget child,
+    VoidCallback? onRefresh,
   }) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Tooltip(
-          message: subtitle,
-          child: Text(
-            title,
-            style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                  fontWeight: FontWeight.bold,
-                  fontSize: 12,
+        Row(
+          children: [
+            Expanded(
+              child: Tooltip(
+                message: subtitle,
+                child: Text(
+                  title,
+                  style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 12,
+                      ),
                 ),
-          ),
+              ),
+            ),
+            if (title == 'Goal 선택' && onRefresh != null)
+              IconButton(
+                icon: const Icon(Icons.refresh, size: 16),
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(),
+                onPressed: onRefresh,
+                tooltip: '데이터 새로고침',
+              ),
+          ],
         ),
         const SizedBox(height: 3),
         child,
