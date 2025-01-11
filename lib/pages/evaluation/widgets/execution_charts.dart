@@ -1,10 +1,9 @@
-
 import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:intl/intl.dart';
 import '/theme/time_trek_theme.dart';
-import '../goal_evaluation.dart';  // ActionEventData 모델용
-
+import '../goal_evaluation.dart'; // ActionEventData 모델용
+import '../models/action_event_data.dart';
 
 class ExecutionTimePieChart extends StatelessWidget {
   final List<ActionEventData> actionEvents;
@@ -28,12 +27,12 @@ class ExecutionTimePieChart extends StatelessWidget {
   Widget build(BuildContext context) {
     // 필터링된 이벤트 목록
     final filteredEvents = actionEvents.where((event) {
-      final isInTimeRange = event.startTime.isAfter(startTime) && 
-                          event.endTime.isBefore(endTime);
+      final isInTimeRange =
+          event.startTime.isAfter(startTime) && event.endTime.isBefore(endTime);
       final isInTimegroup = timegroup.isEmpty || event.timegroup == timegroup;
       final hasTag = tag.isEmpty || tag.any((t) => event.tags.contains(t));
       final isNotExcluded = !noActionStatus.contains(event.actionStatus);
-      
+
       return isInTimeRange && isInTimegroup && hasTag && isNotExcluded;
     }).toList();
 
@@ -76,7 +75,7 @@ class ExecutionTimePieChart extends StatelessWidget {
       final index = entry.key;
       final actionTime = entry.value;
       final color = colors[index % colors.length];
-      
+
       return PieChartSectionData(
         value: actionTime.value,
         title: '${index + 1}',
@@ -116,8 +115,8 @@ class ExecutionTimePieChart extends StatelessWidget {
                   Text(
                     '${totalTime.toStringAsFixed(1)}h',
                     style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.bold,
-                    ),
+                          fontWeight: FontWeight.bold,
+                        ),
                   ),
                 ],
               ),
@@ -151,12 +150,12 @@ class ExecutionTimePieChartList extends StatelessWidget {
   Widget build(BuildContext context) {
     // 필터링된 이벤트 목록
     final filteredEvents = actionEvents.where((event) {
-      final isInTimeRange = event.startTime.isAfter(startTime) && 
-                          event.endTime.isBefore(endTime);
+      final isInTimeRange =
+          event.startTime.isAfter(startTime) && event.endTime.isBefore(endTime);
       final isInTimegroup = timegroup.isEmpty || event.timegroup == timegroup;
       final hasTag = tag.isEmpty || tag.any((t) => event.tags.contains(t));
       final isNotExcluded = !noActionStatus.contains(event.actionStatus);
-      
+
       return isInTimeRange && isInTimegroup && hasTag && isNotExcluded;
     }).toList()
       ..sort((a, b) => b.startTime.compareTo(a.startTime));
@@ -199,7 +198,7 @@ class ExecutionTimePieChartList extends StatelessWidget {
         final actionName = groupedByAction.keys.elementAt(index);
         final events = groupedByAction[actionName]!;
         final color = colors[index % colors.length];
-        
+
         return ExpansionTile(
           title: Row(
             children: [
@@ -224,37 +223,40 @@ class ExecutionTimePieChartList extends StatelessWidget {
               Expanded(child: Text(actionName)),
             ],
           ),
-          children: events.map((event) => ListTile(
-            title: Text(DateFormat('MM/dd HH:mm').format(event.startTime)),
-            subtitle: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('상태: ${event.actionStatus}'),
-                if (event.actionStatusDescription != null)
-                  Text('설명: ${event.actionStatusDescription}'),
-              ],
-            ),
-            trailing: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text('${event.actionExecutionTime}시간'),
-                if (event.attachedImage != null)
-                  IconButton(
-                    icon: const Icon(Icons.image),
-                    onPressed: () {
-                      // TODO: 이미지 보기 기능 구현
-                    },
-                  ),
-                if (event.attachedFile != null)
-                  IconButton(
-                    icon: const Icon(Icons.file_present),
-                    onPressed: () {
-                      // TODO: 파일 다운로드 기능 구현
-                    },
-                  ),
-              ],
-            ),
-          )).toList(),
+          children: events
+              .map((event) => ListTile(
+                    title:
+                        Text(DateFormat('MM/dd HH:mm').format(event.startTime)),
+                    subtitle: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('상태: ${event.actionStatus}'),
+                        if (event.actionStatusDescription != null)
+                          Text('설명: ${event.actionStatusDescription}'),
+                      ],
+                    ),
+                    trailing: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text('${event.actionExecutionTime}시간'),
+                        if (event.attachedImage != null)
+                          IconButton(
+                            icon: const Icon(Icons.image),
+                            onPressed: () {
+                              // TODO: 이미지 보기 기능 구현
+                            },
+                          ),
+                        if (event.attachedFile != null)
+                          IconButton(
+                            icon: const Icon(Icons.file_present),
+                            onPressed: () {
+                              // TODO: 파일 다운로드 기능 구현
+                            },
+                          ),
+                      ],
+                    ),
+                  ))
+              .toList(),
         );
       },
     );

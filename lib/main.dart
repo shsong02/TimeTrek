@@ -6,6 +6,7 @@ import '/theme/time_trek_theme.dart';
 import '/backend/app_state.dart';
 import '/backend/firebase/firebase_config.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 
 import '/pages/calendar/action_calendar.dart';
 import '/pages/actions/add_timeslot_calendar.dart';
@@ -17,6 +18,17 @@ import '/pages/auth/authentication_widget.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // 웹 플랫폼 특정 설정 추가
+  if (kIsWeb) {
+    // 웹에서 포인터 이벤트 바인딩 설정 조정
+    FlutterError.onError = (FlutterErrorDetails details) {
+      if (!details.toString().contains('pointer_binding')) {
+        FlutterError.presentError(details);
+      }
+    };
+  }
+
   await initFirebase();
   runApp(
     ChangeNotifierProvider(
@@ -112,81 +124,66 @@ class _NavBarPageState extends State<NavBarPage> {
     };
 
     final currentIndex = _currentPage != null
-        ? -1 // _currentPage가 있으면 bottom nav에서 선택된 항목 없음
+        ? -1
         : tabs.keys.toList().indexOf(_currentPageName);
 
     return Scaffold(
       body: Row(
         children: [
-          GestureDetector(
-            onHorizontalDragUpdate: (details) {
-              if (details.delta.dx > 0) {
-                setState(() {
-                  _isRailExtended = true;
-                });
-              } else if (details.delta.dx < 0) {
-                setState(() {
-                  _isRailExtended = false;
-                });
-              }
-            },
-            child: Container(
-              decoration: BoxDecoration(
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.grey.withOpacity(0.3),
-                    spreadRadius: 1,
-                    blurRadius: 5,
-                    offset: const Offset(0, 3),
-                  ),
-                ],
-              ),
-              child: NavigationRail(
-                groupAlignment: -0.85,
-                extended: _isRailExtended,
-                minWidth: 25,
-                minExtendedWidth: 150,
-                backgroundColor:
-                    Theme.of(context).primaryColor.withOpacity(0.05),
-                labelType: NavigationRailLabelType.none,
-                selectedIndex:
-                    _selectedRailIndex < 0 ? null : _selectedRailIndex,
-                useIndicator: true,
-                indicatorColor: Theme.of(context).primaryColor.withOpacity(0.1),
-                selectedIconTheme: IconThemeData(
-                  color: Theme.of(context).primaryColor,
-                  size: 28,
-                  weight: 800,
+          Container(
+            decoration: BoxDecoration(
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.grey.withOpacity(0.3),
+                  spreadRadius: 1,
+                  blurRadius: 5,
+                  offset: const Offset(0, 3),
                 ),
-                unselectedIconTheme: IconThemeData(
-                  color: Theme.of(context).unselectedWidgetColor,
-                  size: 24,
-                ),
-                onDestinationSelected: (index) {
-                  setState(() {
-                    _selectedRailIndex = index;
-                    if (index == 0) {
-                      _currentPage = const AddTimeslotCalendar();
-                      _currentPageName = 'AddTimeslotCalendar';
-                    } else if (index == 1) {
-                      _currentPage = const AddTimeslotEventCalendar();
-                      _currentPageName = 'AddTimeslotEventCalendar';
-                    }
-                  });
-                },
-                destinations: const [
-                  NavigationRailDestination(
-                    padding: EdgeInsets.symmetric(vertical: 12),
-                    icon: Icon(Icons.calendar_today),
-                    label: Text('타임슬롯 캘린더'),
-                  ),
-                  NavigationRailDestination(
-                    padding: EdgeInsets.symmetric(vertical: 12),
-                    icon: Icon(Icons.event),
-                    label: Text('이벤트 캘린더'),
-                  ),
-                ],
+              ],
+            ),
+            child: NavigationRail(
+              groupAlignment: -0.85,
+              extended: _isRailExtended,
+              minWidth: 25,
+              minExtendedWidth: 150,
+              backgroundColor: Theme.of(context).primaryColor.withOpacity(0.05),
+              labelType: NavigationRailLabelType.none,
+              selectedIndex: _selectedRailIndex < 0 ? null : _selectedRailIndex,
+              useIndicator: true,
+              indicatorColor: Theme.of(context).primaryColor.withOpacity(0.1),
+              selectedIconTheme: IconThemeData(
+                color: Theme.of(context).primaryColor,
+                size: 28,
+                weight: 800,
               ),
+              unselectedIconTheme: IconThemeData(
+                color: Theme.of(context).unselectedWidgetColor,
+                size: 24,
+              ),
+              onDestinationSelected: (index) {
+                setState(() {
+                  _selectedRailIndex = index;
+                  if (index == 0) {
+                    _currentPage = const AddTimeslotCalendar();
+                    _currentPageName = 'AddTimeslotCalendar';
+                  } else if (index == 1) {
+                    _currentPage = const AddTimeslotEventCalendar();
+                    _currentPageName = 'AddTimeslotEventCalendar';
+                  }
+                });
+              },
+              destinations: const [
+                NavigationRailDestination(
+                  padding: EdgeInsets.symmetric(vertical: 12),
+                  icon: Icon(Icons.calendar_today),
+                  label: Text('타임슬롯 캘린더'),
+                ),
+                NavigationRailDestination(
+                  padding: EdgeInsets.symmetric(vertical: 12),
+                  icon: Icon(Icons.event),
+                  label: Text('이벤트 캘린더'),
+                ),
+              ],
             ),
           ),
           Expanded(

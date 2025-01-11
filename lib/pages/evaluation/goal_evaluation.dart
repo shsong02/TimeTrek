@@ -13,99 +13,8 @@ import 'dart:html' if (dart.library.html) 'dart:html' as html;
 import 'widgets/progress_charts.dart';
 import 'widgets/execution_charts.dart';
 import 'widgets/action_history.dart';
-
-// 데이터 모델
-class ActionEventData {
-  final String actionId;
-  final String actionName;
-  final String goalName;
-  final String timegroup;
-  final List<String> tags;
-  final String actionStatus;
-  final String? actionStatusDescription;
-  final double actionExecutionTime;
-  final DateTime startTime;
-  final DateTime endTime;
-  final String? attachedImage;
-  final String? attachedFile;
-  final int referenceImageCount;
-  final int referenceFileCount;
-  final List<String> referenceImageUrls;
-  final List<String> referenceFileUrls;
-
-  ActionEventData({
-    required this.actionId,
-    required this.actionName,
-    required this.goalName,
-    required this.timegroup,
-    required this.tags,
-    required this.actionStatus,
-    this.actionStatusDescription,
-    required this.actionExecutionTime,
-    required this.startTime,
-    required this.endTime,
-    this.attachedImage,
-    this.attachedFile,
-    this.referenceImageCount = 0,
-    this.referenceFileCount = 0,
-    this.referenceImageUrls = const [],
-    this.referenceFileUrls = const [],
-  });
-
-  factory ActionEventData.fromMergedData(
-      Map<String, dynamic> calendarEvent, Map<String, dynamic> actionList) {
-    return ActionEventData(
-      actionId: actionList['id'] ?? calendarEvent['action_id'] ?? '',
-      actionName:
-          actionList['action_name'] ?? calendarEvent['action_name'] ?? '',
-      goalName: actionList['goal_name'] ?? calendarEvent['goal_name'] ?? '',
-      timegroup: actionList['timegroup'] ?? calendarEvent['timegroup'] ?? '',
-      tags: List<String>.from(calendarEvent['goal_tag'] ?? []),
-      actionStatus:
-          actionList['action_status'] ?? calendarEvent['action_status'] ?? '',
-      actionStatusDescription: calendarEvent['action_status_description'],
-      actionExecutionTime: (actionList['action_execution_time'] ??
-              calendarEvent['action_execution_time'] ??
-              0)
-          .toDouble(),
-      startTime: (calendarEvent['startTime'] as Timestamp).toDate(),
-      endTime: (calendarEvent['endTime'] as Timestamp).toDate(),
-      attachedImage: calendarEvent['attached_image'],
-      attachedFile: calendarEvent['attached_file'],
-      referenceImageCount: calendarEvent['reference_image_count'] ?? 0,
-      referenceFileCount: calendarEvent['reference_file_count'] ?? 0,
-      referenceImageUrls:
-          List<String>.from(calendarEvent['reference_image_urls'] ?? []),
-      referenceFileUrls:
-          List<String>.from(calendarEvent['reference_file_urls'] ?? []),
-    );
-  }
-
-  factory ActionEventData.fromMap(Map<String, dynamic> map) {
-    return ActionEventData(
-      actionId: map['action_id'] ?? '',
-      actionName: map['action_name'] ?? '',
-      goalName: map['goal_name'] ?? '',
-      timegroup: map['timegroup'] ?? '',
-      tags: List<String>.from(map['goal_tag'] ?? []),
-      actionStatus: map['action_status'] ?? '',
-      actionStatusDescription: map['action_status_description'],
-      actionExecutionTime: map['action_execution_time'] ?? 0.0,
-      startTime: map['startTime'] != null
-          ? DateTime.fromMillisecondsSinceEpoch(map['startTime'])
-          : DateTime.fromMillisecondsSinceEpoch(0),
-      endTime: map['endTime'] != null
-          ? DateTime.fromMillisecondsSinceEpoch(map['endTime'])
-          : DateTime.fromMillisecondsSinceEpoch(0),
-      attachedImage: map['attached_image'],
-      attachedFile: map['attached_file'],
-      referenceImageCount: map['reference_image_count'] ?? 0,
-      referenceFileCount: map['reference_file_count'] ?? 0,
-      referenceImageUrls: List<String>.from(map['reference_image_urls'] ?? []),
-      referenceFileUrls: List<String>.from(map['reference_file_urls'] ?? []),
-    );
-  }
-}
+import 'widgets/email_report.dart';
+import 'models/action_event_data.dart';
 
 class GoalEvaluation extends StatefulWidget {
   const GoalEvaluation({
@@ -387,7 +296,7 @@ class _InsightDailySummaryWidgetState extends State<InsightDailySummaryWidget> {
   List<String> selectedTags = [];
   bool hideCompleted = false;
 
-  Map<String, List<String>> _getAIAnalysisDetail() {
+  Map<String, dynamic> _getAIAnalysisDetail() {
     final today = DateTime.now();
     final todayStart = DateTime(today.year, today.month, today.day);
     final todayEnd = DateTime(today.year, today.month, today.day, 23, 59, 59);
@@ -402,16 +311,18 @@ class _InsightDailySummaryWidgetState extends State<InsightDailySummaryWidget> {
     final tomorrowEvents = widget.actionEvents.where((e) =>
         e.startTime.isAfter(tomorrowStart) && e.endTime.isBefore(tomorrowEnd));
 
+    final todoEvents = todayEvents.where((e) => e.actionStatus != 'completed');
+    final totalExecutionTime = todoEvents.fold<num>(
+        0, (sum, event) => sum + (event.actionExecutionTime ?? 0));
+
     return {
       'today_completed': todayEvents
           .where((e) => e.actionStatus == 'completed')
           .map((e) => e.actionName)
           .toList(),
-      'today_todo': todayEvents
-          .where((e) => e.actionStatus != 'completed')
-          .map((e) => e.actionName)
-          .toList(),
+      'today_todo': todoEvents.map((e) => e.actionName).toList(),
       'tomorrow': tomorrowEvents.map((e) => e.actionName).toList(),
+      'total_execution_time': totalExecutionTime,
     };
   }
 
@@ -456,124 +367,138 @@ class _InsightDailySummaryWidgetState extends State<InsightDailySummaryWidget> {
             type: 'daily',
             events: widget.actionEvents,
             detail: _getAIAnalysisDetail(),
+            startTime: todayStart,
+            endTime: todayEnd,
           ),
 
           // 오늘의 진행 상황
           Card(
             margin: const EdgeInsets.all(8.0),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Padding(
-                  padding: const EdgeInsets.all(16.0),
-                  child: Text(
-                    '오늘의 진행 상황',
-                    style: Theme.of(context).textTheme.titleLarge,
+            child: Container(
+              constraints: const BoxConstraints(
+                minWidth: 300,
+                maxWidth: double.infinity,
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.all(16.0),
+                    child: Text(
+                      '오늘의 진행 상황',
+                      style: Theme.of(context).textTheme.titleLarge,
+                    ),
                   ),
-                ),
-                // 차트와 체크리스트
-                Card(
-                  child: Column(
-                    children: [
-                      ProgressBarChart(
-                        actionEvents: widget.actionEvents,
-                        startTime: todayStart,
-                        endTime: todayEnd,
-                        timegroup: '',
-                        tag: selectedTags,
-                        noActionStatus: hideCompleted ? ['completed'] : [],
-                      ),
-                      ProgressBarChartCheckList(
-                        actionEvents: widget.actionEvents,
-                        startTime: todayStart,
-                        endTime: todayEnd,
-                      ),
-                    ],
+                  // 차트와 체크리스트
+                  Card(
+                    child: Column(
+                      children: [
+                        ProgressBarChart(
+                          actionEvents: widget.actionEvents,
+                          startTime: todayStart,
+                          endTime: todayEnd,
+                          timegroup: '',
+                          tag: selectedTags,
+                          noActionStatus: hideCompleted ? ['completed'] : [],
+                        ),
+                        ProgressBarChartCheckList(
+                          actionEvents: widget.actionEvents,
+                          startTime: todayStart,
+                          endTime: todayEnd,
+                        ),
+                      ],
+                    ),
                   ),
-                ),
-                // 실행 시간 차트
-                Card(
-                  child: Column(
-                    children: [
-                      ExecutionTimePieChart(
-                        actionEvents: widget.actionEvents,
-                        startTime: todayStart,
-                        endTime: todayEnd,
-                        timegroup: '',
-                        tag: selectedTags,
-                        noActionStatus: hideCompleted ? ['completed'] : [],
-                      ),
-                      ExecutionTimePieChartList(
-                        actionEvents: widget.actionEvents,
-                        startTime: todayStart,
-                        endTime: todayEnd,
-                        timegroup: '',
-                        tag: selectedTags,
-                        noActionStatus: hideCompleted ? ['completed'] : [],
-                      ),
-                    ],
+                  // 실행 시간 차트
+                  Card(
+                    child: Column(
+                      children: [
+                        ExecutionTimePieChart(
+                          actionEvents: widget.actionEvents,
+                          startTime: todayStart,
+                          endTime: todayEnd,
+                          timegroup: '',
+                          tag: selectedTags,
+                          noActionStatus: hideCompleted ? ['completed'] : [],
+                        ),
+                        ExecutionTimePieChartList(
+                          actionEvents: widget.actionEvents,
+                          startTime: todayStart,
+                          endTime: todayEnd,
+                          timegroup: '',
+                          tag: selectedTags,
+                          noActionStatus: hideCompleted ? ['completed'] : [],
+                        ),
+                      ],
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
 
           // 내일 예정된 항목
           Card(
             margin: const EdgeInsets.all(8.0),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Padding(
-                  padding: const EdgeInsets.all(16.0),
-                  child: Text(
-                    '내일 예정된 항목',
-                    style: Theme.of(context).textTheme.titleLarge,
+            child: Container(
+              constraints: const BoxConstraints(
+                minWidth: 300,
+                maxWidth: double.infinity,
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.all(16.0),
+                    child: Text(
+                      '내일 예정된 항목',
+                      style: Theme.of(context).textTheme.titleLarge,
+                    ),
                   ),
-                ),
-                // 동일한 위젯들을 내일 날짜로 구성
-                Card(
-                  child: Column(
-                    children: [
-                      ProgressBarChart(
-                        actionEvents: widget.actionEvents,
-                        startTime: tomorrowStart,
-                        endTime: tomorrowEnd,
-                        timegroup: '',
-                        tag: selectedTags,
-                        noActionStatus: hideCompleted ? ['completed'] : [],
-                      ),
-                      ProgressBarChartCheckList(
-                        actionEvents: widget.actionEvents,
-                        startTime: tomorrowStart,
-                        endTime: tomorrowEnd,
-                      ),
-                    ],
+                  // 동일한 위젯들을 내일 날짜로 구성
+                  Card(
+                    child: Column(
+                      children: [
+                        ProgressBarChart(
+                          actionEvents: widget.actionEvents,
+                          startTime: tomorrowStart,
+                          endTime: tomorrowEnd,
+                          timegroup: '',
+                          tag: selectedTags,
+                          noActionStatus: hideCompleted ? ['completed'] : [],
+                        ),
+                        ProgressBarChartCheckList(
+                          actionEvents: widget.actionEvents,
+                          startTime: tomorrowStart,
+                          endTime: tomorrowEnd,
+                        ),
+                      ],
+                    ),
                   ),
-                ),
-                Card(
-                  child: Column(
-                    children: [
-                      ExecutionTimePieChart(
-                        actionEvents: widget.actionEvents,
-                        startTime: tomorrowStart,
-                        endTime: tomorrowEnd,
-                        timegroup: '',
-                        tag: selectedTags,
-                        noActionStatus: hideCompleted ? ['completed'] : [],
-                      ),
-                      ExecutionTimePieChartList(
-                        actionEvents: widget.actionEvents,
-                        startTime: tomorrowStart,
-                        endTime: tomorrowEnd,
-                        timegroup: '',
-                        tag: selectedTags,
-                        noActionStatus: hideCompleted ? ['completed'] : [],
-                      ),
-                    ],
+                  Card(
+                    child: Column(
+                      children: [
+                        ExecutionTimePieChart(
+                          actionEvents: widget.actionEvents,
+                          startTime: tomorrowStart,
+                          endTime: tomorrowEnd,
+                          timegroup: '',
+                          tag: selectedTags,
+                          noActionStatus: hideCompleted ? ['completed'] : [],
+                        ),
+                        ExecutionTimePieChartList(
+                          actionEvents: widget.actionEvents,
+                          startTime: tomorrowStart,
+                          endTime: tomorrowEnd,
+                          timegroup: '',
+                          tag: selectedTags,
+                          noActionStatus: hideCompleted ? ['completed'] : [],
+                        ),
+                      ],
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         ],
@@ -647,7 +572,7 @@ class _InsightWeeklySummaryWidgetState
     return 0;
   }
 
-  Map<String, List<String>> _getAIAnalysisDetail() {
+  Map<String, dynamic> _getAIAnalysisDetail() {
     final now = DateTime.now();
     final weekStart = now.subtract(Duration(days: now.weekday - 1));
     final weekEnd = weekStart.add(const Duration(days: 7));
@@ -655,203 +580,170 @@ class _InsightWeeklySummaryWidgetState
     final thisWeekEvents = widget.actionEvents.where(
         (e) => e.startTime.isAfter(weekStart) && e.endTime.isBefore(weekEnd));
 
+    final todoEvents =
+        thisWeekEvents.where((e) => e.actionStatus != 'completed');
+    final totalExecutionTime = todoEvents.fold<num>(
+        0, (sum, event) => sum + (event.actionExecutionTime ?? 0));
+
     return {
       'thisweek_completed': thisWeekEvents
           .where((e) => e.actionStatus == 'completed')
           .map((e) => e.actionName)
           .toList(),
-      'thisweek_todo': thisWeekEvents
-          .where((e) => e.actionStatus != 'completed')
+      'thisweek_pending': thisWeekEvents
+          .where((e) => e.actionStatus == 'pending')
           .map((e) => e.actionName)
           .toList(),
+      'thisweek_todo': todoEvents.map((e) => e.actionName).toList(),
+      'total_execution_time': totalExecutionTime,
     };
   }
 
   @override
   Widget build(BuildContext context) {
+    final now = DateTime.now();
+    final weekStart = now.subtract(Duration(days: now.weekday - 1));
+    final weekEnd = weekStart.add(const Duration(days: 7));
+
     final allTags =
         widget.actionEvents.expand((event) => event.tags).toSet().toList();
 
-    return Column(
-      children: [
-        InsightFilterWidget(
-          allTags: allTags,
-          selectedTags: selectedTags,
-          hideCompleted: hideCompleted,
-          onTagsChanged: (tags) => setState(() => selectedTags = tags),
-          onHideCompletedChanged: (value) =>
-              setState(() => hideCompleted = value),
-        ),
-
-        // AI 분석 위젯을 필터 다음으로 이동
-        AIAnalysisWidget(
-          type: 'weekly',
-          events: widget.actionEvents,
-          detail: _getAIAnalysisDetail(),
-        ),
-
-        // 주간 캐러셀
-        Expanded(
-          child: PageView.builder(
-            controller: _pageController,
-            itemCount: weekRanges.length,
-            onPageChanged: (index) {
-              setState(() {});
-            },
-            itemBuilder: (context, index) {
-              final week = weekRanges[index];
-              final isCurrentWeek = index == initialPage;
-
-              return SingleChildScrollView(
-                child: Column(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(8.0),
-                      decoration: isCurrentWeek
-                          ? BoxDecoration(
-                              color: TimeTrekTheme.vitaflowBrandColor
-                                  .withOpacity(0.1),
-                              borderRadius: BorderRadius.circular(8),
-                            )
-                          : null,
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Text(
-                            '${DateFormat('MM/dd').format(week.start)} - ${DateFormat('MM/dd').format(week.end)}',
-                            style: Theme.of(context)
-                                .textTheme
-                                .titleMedium
-                                ?.copyWith(
-                                  fontWeight:
-                                      isCurrentWeek ? FontWeight.bold : null,
-                                  color: isCurrentWeek
-                                      ? TimeTrekTheme.vitaflowBrandColor
-                                      : null,
-                                ),
-                          ),
-                          if (isCurrentWeek) ...[
-                            const SizedBox(width: 8),
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 8, vertical: 2),
-                              decoration: BoxDecoration(
-                                color: TimeTrekTheme.vitaflowBrandColor,
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                              child: const Text(
-                                '이번 주',
-                                style: TextStyle(
-                                    color: Colors.white, fontSize: 12),
-                              ),
-                            ),
-                          ],
-                        ],
-                      ),
-                    ),
-                    Card(
-                      margin: const EdgeInsets.all(8.0),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Padding(
-                            padding: const EdgeInsets.all(16.0),
-                            child: Text(
-                              '진행 상황',
-                              style: Theme.of(context).textTheme.titleLarge,
-                            ),
-                          ),
-                          ProgressBarChart(
-                            actionEvents: widget.actionEvents,
-                            startTime: week.start,
-                            endTime: week.end,
-                            timegroup: '',
-                            tag: selectedTags,
-                            noActionStatus: hideCompleted ? ['completed'] : [],
-                          ),
-                          ProgressBarChartCheckList(
-                            actionEvents: widget.actionEvents,
-                            startTime: week.start,
-                            endTime: week.end,
-                          ),
-                        ],
-                      ),
-                    ),
-
-                    // 실행 시간 분석
-                    Card(
-                      margin: const EdgeInsets.all(8.0),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Padding(
-                            padding: const EdgeInsets.all(16.0),
-                            child: Text(
-                              '실행 시간 분석',
-                              style: Theme.of(context).textTheme.titleLarge,
-                            ),
-                          ),
-                          ExecutionTimePieChart(
-                            actionEvents: widget.actionEvents,
-                            startTime: week.start,
-                            endTime: week.end,
-                            timegroup: '',
-                            tag: selectedTags,
-                            noActionStatus: hideCompleted ? ['completed'] : [],
-                          ),
-                          ExecutionTimePieChartList(
-                            actionEvents: widget.actionEvents,
-                            startTime: week.start,
-                            endTime: week.end,
-                            timegroup: '',
-                            tag: selectedTags,
-                            noActionStatus: hideCompleted ? ['completed'] : [],
-                          ),
-                        ],
-                      ),
-                    ),
-
-                    // 액션 히스토리
-                    Card(
-                      margin: const EdgeInsets.all(8.0),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Padding(
-                            padding: const EdgeInsets.all(16.0),
-                            child: Text(
-                              '액션 히스토리',
-                              style: Theme.of(context).textTheme.titleLarge,
-                            ),
-                          ),
-                          ActionHistoryTimeline(
-                            actionHistories: widget.actionHistories,
-                            startTime: week.start,
-                            endTime: week.end,
-                            timegroup: '',
-                            tag: selectedTags,
-                            noActionStatus: hideCompleted ? ['completed'] : [],
-                          ),
-                          const SizedBox(height: 16),
-                          ActionHistoryTimelineList(
-                            actionHistories: widget.actionHistories,
-                            startTime: week.start,
-                            endTime: week.end,
-                            timegroup: '',
-                            tag: selectedTags,
-                            noActionStatus: hideCompleted ? ['completed'] : [],
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              );
-            },
+    return SingleChildScrollView(
+      child: Column(
+        children: [
+          InsightFilterWidget(
+            allTags: allTags,
+            selectedTags: selectedTags,
+            hideCompleted: hideCompleted,
+            onTagsChanged: (tags) => setState(() => selectedTags = tags),
+            onHideCompletedChanged: (value) =>
+                setState(() => hideCompleted = value),
           ),
-        ),
-      ],
+
+          EmailReportWidget(
+            reportType: 'daily',
+            actionEvents: widget.actionEvents,
+            selectedTags: selectedTags,
+            hideCompleted: hideCompleted,
+            startTime: weekStart,
+            endTime: weekEnd,
+          ),
+
+          AIAnalysisWidget(
+            type: 'weekly',
+            events: widget.actionEvents,
+            detail: _getAIAnalysisDetail(),
+            startTime: weekStart,
+            endTime: weekEnd,
+          ),
+
+          // 주간 진행 상황
+          Card(
+            margin: const EdgeInsets.all(8.0),
+            child: Container(
+              constraints: const BoxConstraints(
+                minWidth: 300,
+                maxWidth: double.infinity,
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.all(16.0),
+                    child: Text(
+                      '${DateFormat('MM/dd').format(weekStart)} - ${DateFormat('MM/dd').format(weekEnd)} 진행 상황',
+                      style: const TextStyle(
+                          fontSize: 20, fontWeight: FontWeight.bold),
+                    ),
+                  ),
+                  // 차트와 체크리스트
+                  Card(
+                    child: Column(
+                      children: [
+                        ProgressBarChart(
+                          actionEvents: widget.actionEvents,
+                          startTime: weekStart,
+                          endTime: weekEnd,
+                          timegroup: '',
+                          tag: selectedTags,
+                          noActionStatus: hideCompleted ? ['completed'] : [],
+                        ),
+                        ProgressBarChartCheckList(
+                          actionEvents: widget.actionEvents,
+                          startTime: weekStart,
+                          endTime: weekEnd,
+                        ),
+                      ],
+                    ),
+                  ),
+                  // 실행 시간 차트
+                  Card(
+                    child: Column(
+                      children: [
+                        ExecutionTimePieChart(
+                          actionEvents: widget.actionEvents,
+                          startTime: weekStart,
+                          endTime: weekEnd,
+                          timegroup: '',
+                          tag: selectedTags,
+                          noActionStatus: hideCompleted ? ['completed'] : [],
+                        ),
+                        ExecutionTimePieChartList(
+                          actionEvents: widget.actionEvents,
+                          startTime: weekStart,
+                          endTime: weekEnd,
+                          timegroup: '',
+                          tag: selectedTags,
+                          noActionStatus: hideCompleted ? ['completed'] : [],
+                        ),
+                      ],
+                    ),
+                  ),
+                  // 액션 히스토리 타임라인
+                  Card(
+                    child: Column(
+                      children: [
+                        ActionHistoryTimeline(
+                          actionHistories: widget.actionHistories,
+                          startTime: weekStart,
+                          endTime: weekEnd,
+                          timegroup: '',
+                          tag: selectedTags,
+                          noActionStatus: hideCompleted ? ['completed'] : [],
+                        ),
+                        const SizedBox(height: 16),
+                        ActionHistoryTimelineList(
+                          actionHistories: widget.actionHistories,
+                          startTime: weekStart,
+                          endTime: weekEnd,
+                          timegroup: '',
+                          tag: selectedTags,
+                          noActionStatus: hideCompleted ? ['completed'] : [],
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
     );
+  }
+
+  bool _isCurrentWeek(WeekRange week) {
+    final now = DateTime.now();
+    // 현재 날짜가 속한 주의 월요일을 찾음
+    final monday = now.subtract(Duration(days: now.weekday - 1));
+    final mondayStart = DateTime(monday.year, monday.month, monday.day);
+    // 현재 날짜가 속한 주의 일요일을 찾음
+    final sunday = mondayStart.add(const Duration(days: 6));
+    final sundayEnd =
+        DateTime(sunday.year, sunday.month, sunday.day, 23, 59, 59);
+
+    return week.start.isAtSameMomentAs(mondayStart) &&
+        week.end.isAtSameMomentAs(sundayEnd);
   }
 }
 
@@ -905,7 +797,7 @@ class _InsightMonthlySummaryWidgetState
     }
   }
 
-  Map<String, List<String>> _getAIAnalysisDetail() {
+  Map<String, dynamic> _getAIAnalysisDetail() {
     final now = DateTime.now();
     final monthStart = DateTime(now.year, now.month, 1);
     final monthEnd = DateTime(now.year, now.month + 1, 0, 23, 59, 59);
@@ -913,15 +805,22 @@ class _InsightMonthlySummaryWidgetState
     final thisMonthEvents = widget.actionEvents.where(
         (e) => e.startTime.isAfter(monthStart) && e.endTime.isBefore(monthEnd));
 
+    final todoEvents =
+        thisMonthEvents.where((e) => e.actionStatus != 'completed');
+    final totalExecutionTime = todoEvents.fold<num>(
+        0, (sum, event) => sum + (event.actionExecutionTime ?? 0));
+
     return {
       'thismonth_completed': thisMonthEvents
           .where((e) => e.actionStatus == 'completed')
           .map((e) => e.actionName)
           .toList(),
-      'thismonth_todo': thisMonthEvents
-          .where((e) => e.actionStatus != 'completed')
+      'thismonth_pending': thisMonthEvents
+          .where((e) => e.actionStatus == 'pending')
           .map((e) => e.actionName)
           .toList(),
+      'thismonth_todo': todoEvents.map((e) => e.actionName).toList(),
+      'total_execution_time': totalExecutionTime,
     };
   }
 
@@ -947,95 +846,112 @@ class _InsightMonthlySummaryWidgetState
                 setState(() => hideCompleted = value),
           ),
 
+          // 이메일 리포트 위젯 추가
+          EmailReportWidget(
+            reportType: 'daily',
+            actionEvents: widget.actionEvents,
+            selectedTags: selectedTags,
+            hideCompleted: hideCompleted,
+            startTime: monthStart,
+            endTime: monthEnd,
+          ),
           // AI 분석 위젯을 필터 다음으로 이동
           AIAnalysisWidget(
             type: 'monthly',
             events: widget.actionEvents,
             detail: _getAIAnalysisDetail(),
+            startTime: monthStart,
+            endTime: monthEnd,
           ),
 
           // 월간 진행 상황
           Card(
             margin: const EdgeInsets.all(8.0),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Padding(
-                  padding: const EdgeInsets.all(16.0),
-                  child: Text(
-                    '${DateFormat('yyyy년 MM월').format(monthStart)} 진행 상황',
-                    style: const TextStyle(
-                        fontSize: 20, fontWeight: FontWeight.bold),
+            child: Container(
+              constraints: const BoxConstraints(
+                minWidth: 300,
+                maxWidth: double.infinity,
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.all(16.0),
+                    child: Text(
+                      '${DateFormat('yyyy년 MM월').format(monthStart)} 진행 상황',
+                      style: const TextStyle(
+                          fontSize: 20, fontWeight: FontWeight.bold),
+                    ),
                   ),
-                ),
-                // 차트와 체크리스트
-                Card(
-                  child: Column(
-                    children: [
-                      ProgressBarChart(
-                        actionEvents: widget.actionEvents,
-                        startTime: monthStart,
-                        endTime: monthEnd,
-                        timegroup: '',
-                        tag: selectedTags,
-                        noActionStatus: hideCompleted ? ['completed'] : [],
-                      ),
-                      ProgressBarChartCheckList(
-                        actionEvents: widget.actionEvents,
-                        startTime: monthStart,
-                        endTime: monthEnd,
-                      ),
-                    ],
+                  // 차트와 체크리스트
+                  Card(
+                    child: Column(
+                      children: [
+                        ProgressBarChart(
+                          actionEvents: widget.actionEvents,
+                          startTime: monthStart,
+                          endTime: monthEnd,
+                          timegroup: '',
+                          tag: selectedTags,
+                          noActionStatus: hideCompleted ? ['completed'] : [],
+                        ),
+                        ProgressBarChartCheckList(
+                          actionEvents: widget.actionEvents,
+                          startTime: monthStart,
+                          endTime: monthEnd,
+                        ),
+                      ],
+                    ),
                   ),
-                ),
-                // 실행 시간 차트
-                Card(
-                  child: Column(
-                    children: [
-                      ExecutionTimePieChart(
-                        actionEvents: widget.actionEvents,
-                        startTime: monthStart,
-                        endTime: monthEnd,
-                        timegroup: '',
-                        tag: selectedTags,
-                        noActionStatus: hideCompleted ? ['completed'] : [],
-                      ),
-                      ExecutionTimePieChartList(
-                        actionEvents: widget.actionEvents,
-                        startTime: monthStart,
-                        endTime: monthEnd,
-                        timegroup: '',
-                        tag: selectedTags,
-                        noActionStatus: hideCompleted ? ['completed'] : [],
-                      ),
-                    ],
+                  // 실행 시간 차트
+                  Card(
+                    child: Column(
+                      children: [
+                        ExecutionTimePieChart(
+                          actionEvents: widget.actionEvents,
+                          startTime: monthStart,
+                          endTime: monthEnd,
+                          timegroup: '',
+                          tag: selectedTags,
+                          noActionStatus: hideCompleted ? ['completed'] : [],
+                        ),
+                        ExecutionTimePieChartList(
+                          actionEvents: widget.actionEvents,
+                          startTime: monthStart,
+                          endTime: monthEnd,
+                          timegroup: '',
+                          tag: selectedTags,
+                          noActionStatus: hideCompleted ? ['completed'] : [],
+                        ),
+                      ],
+                    ),
                   ),
-                ),
-                // 액션 히스토리 타임라인
-                Card(
-                  child: Column(
-                    children: [
-                      ActionHistoryTimeline(
-                        actionHistories: widget.actionHistories,
-                        startTime: monthStart,
-                        endTime: monthEnd,
-                        timegroup: '',
-                        tag: selectedTags,
-                        noActionStatus: hideCompleted ? ['completed'] : [],
-                      ),
-                      const SizedBox(height: 16),
-                      ActionHistoryTimelineList(
-                        actionHistories: widget.actionHistories,
-                        startTime: monthStart,
-                        endTime: monthEnd,
-                        timegroup: '',
-                        tag: selectedTags,
-                        noActionStatus: hideCompleted ? ['completed'] : [],
-                      ),
-                    ],
+                  // 액션 히스토리 타임라인
+                  Card(
+                    child: Column(
+                      children: [
+                        ActionHistoryTimeline(
+                          actionHistories: widget.actionHistories,
+                          startTime: monthStart,
+                          endTime: monthEnd,
+                          timegroup: '',
+                          tag: selectedTags,
+                          noActionStatus: hideCompleted ? ['completed'] : [],
+                        ),
+                        const SizedBox(height: 16),
+                        ActionHistoryTimelineList(
+                          actionHistories: widget.actionHistories,
+                          startTime: monthStart,
+                          endTime: monthEnd,
+                          timegroup: '',
+                          tag: selectedTags,
+                          noActionStatus: hideCompleted ? ['completed'] : [],
+                        ),
+                      ],
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         ],
@@ -1049,17 +965,25 @@ class AIAnalysisService {
   static Future<String> getAnalysis({
     required String type,
     required List<ActionEventData> events,
-    required Map<String, List<String>> detail,
+    required Map<String, dynamic> detail,
+    required DateTime startTime,
+    required DateTime endTime,
   }) async {
     final url = Uri.parse(
-        'https://shsong83.app.n8n.cloud/webhook/timetrek-goal-evaluation');
+        'https://shsong83.app.n8n.cloud/webhook-test/timetrek-goal-evaluation');
+    // 'https://shsong83.app.n8n.cloud/webhook/timetrek-goal-evaluation');
 
     try {
+      final now = DateTime.now();
       final response = await http.post(
         url,
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({
           'type': type,
+          'only_email': false,
+          'nowtime': now.toIso8601String(),
+          'starttime': startTime.toIso8601String(),
+          'endtime': endTime.toIso8601String(),
           'actionEventData': events
               .map((e) => {
                     'actionName': e.actionName,
@@ -1092,13 +1016,17 @@ class AIAnalysisService {
 class AIAnalysisWidget extends StatefulWidget {
   final String type;
   final List<ActionEventData> events;
-  final Map<String, List<String>> detail;
+  final Map<String, dynamic> detail;
+  final DateTime startTime;
+  final DateTime endTime;
 
   const AIAnalysisWidget({
     Key? key,
     required this.type,
     required this.events,
     required this.detail,
+    required this.startTime,
+    required this.endTime,
   }) : super(key: key);
 
   @override
@@ -1120,10 +1048,30 @@ class _AIAnalysisWidgetState extends State<AIAnalysisWidget> {
   }
 
   bool _isAnalysisValid(DateTime analysisTime) {
-    final now = DateTime.now();
-    final difference = now.difference(analysisTime);
-    // 24시간 이내의 분석 결과만 유효
-    return difference.inHours < 24;
+    // 현재 시간이 endtime을 넘었으면 무효
+    if (DateTime.now().isAfter(widget.endTime)) {
+      return false;
+    }
+
+    // 분석 유형별로 다른 유효 기간 적용
+    switch (widget.type) {
+      case 'daily':
+        // 하루가 끝나기 전까지 유효
+        return DateTime.now().isBefore(widget.endTime);
+
+      case 'weekly':
+        // 해당 주가 끝나기 전까지 유효
+        return DateTime.now().isBefore(widget.endTime);
+
+      case 'monthly':
+        // 해당 월이 끝나기 전까지 유효
+        return DateTime.now().isBefore(widget.endTime);
+
+      default:
+        // 기본값으로 24시간 유효
+        final difference = DateTime.now().difference(analysisTime);
+        return difference.inHours < 24;
+    }
   }
 
   Future<void> _loadSavedAnalysis() async {
@@ -1179,6 +1127,8 @@ class _AIAnalysisWidgetState extends State<AIAnalysisWidget> {
         type: widget.type,
         events: widget.events,
         detail: widget.detail,
+        startTime: widget.startTime,
+        endTime: widget.endTime,
       );
 
       final Map<String, dynamic> jsonResult = jsonDecode(result);
@@ -1199,6 +1149,20 @@ ${output['tomorrow_summary']}
 
 ### 주의사항
 ${output['tomorrow_issue_point']}
+''';
+      } else if (widget.type == 'weekly') {
+        markdownContent = '''
+## 이번 주 요약
+${output['thisweek_summary']}
+
+### 지연된 작업 및 이슈
+${output['thisweek_pedning_issue']}
+
+### 완료 예상 분석
+${output['thisweek_completed_estimation']}
+
+### 목표 달성 평가
+${output['thisweek_goal_evaluation']}
 ''';
       }
 
@@ -1320,471 +1284,6 @@ ${output['tomorrow_issue_point']}
           ],
         ),
       ),
-    );
-  }
-}
-
-// 이메일 전송 위젯 추가
-class EmailReportWidget extends StatefulWidget {
-  final String reportType; // 'daily', 'weekly', 'monthly'
-  final List<ActionEventData> actionEvents;
-  final List<String> selectedTags;
-  final bool hideCompleted;
-  final DateTime startTime;
-  final DateTime endTime;
-
-  const EmailReportWidget({
-    Key? key,
-    required this.reportType,
-    required this.actionEvents,
-    required this.selectedTags,
-    required this.hideCompleted,
-    required this.startTime,
-    required this.endTime,
-  }) : super(key: key);
-
-  @override
-  State<EmailReportWidget> createState() => _EmailReportWidgetState();
-}
-
-class _EmailReportWidgetState extends State<EmailReportWidget> {
-  final _emailController = TextEditingController();
-  bool _isSending = false;
-  bool _isExpanded = false;
-  String? _analysisResult;
-
-  String escapeHtml(String text) {
-    return text
-        .replaceAll('&', '&amp;')
-        .replaceAll('<', '&lt;')
-        .replaceAll('>', '&gt;')
-        .replaceAll('"', '&quot;')
-        .replaceAll("'", '&#039;');
-  }
-
-  Future<void> _sendEmail() async {
-    if (!_emailController.text.contains('@')) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('유효한 이메일 주소를 입력해주세요')),
-      );
-      return;
-    }
-
-    setState(() => _isSending = true);
-
-    try {
-      print('이메일 리포트 생성 시작...');
-      final htmlContent = await _generateHtmlReport();
-
-      if (htmlContent == null) {
-        print('HTML 리포트 생성 실패');
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('리포트 생성 중 오류가 발생했습니다')),
-          );
-        }
-        return;
-      }
-
-      print('HTML 리포트 생성 완료, API 호출 시작...');
-      final url = Uri.parse(
-          'https://shsong83.app.n8n.cloud/webhook/timetrek-goal-evaluation-send-email');
-
-      final response = await http.post(
-        url,
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({
-          'to': _emailController.text,
-          'subject':
-              '${widget.reportType == 'daily' ? '[TimeTrek] 일간' : widget.reportType == 'weekly' ? '[TimeTrek] 주간' : '[TimeTrek] 월간'} 목표 평가 리포트',
-          'html': htmlContent,
-        }),
-      );
-
-      print('API 응답 상태 코드: ${response.statusCode}');
-      if (response.statusCode == 200) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('리포트가 이메일로 전송되었습니다')),
-          );
-        }
-      } else {
-        print('API 오류 응답: ${response.body}');
-        throw Exception('이메일 전송 실패');
-      }
-    } catch (e) {
-      print('이메일 전송 중 오류 발생: $e');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('이메일 전송 중 오류가 발생했습니다')),
-        );
-      }
-    } finally {
-      setState(() => _isSending = false);
-    }
-  }
-
-  Future<String?> _generateHtmlReport() async {
-    try {
-      // 데이터 준비
-      final filteredEvents = widget.actionEvents
-          .where((e) =>
-              e.startTime.isAfter(widget.startTime) &&
-              e.endTime.isBefore(widget.endTime) &&
-              (widget.selectedTags.isEmpty ||
-                  widget.selectedTags.any((tag) => e.tags.contains(tag))) &&
-              (!widget.hideCompleted || e.actionStatus != 'completed'))
-          .toList();
-
-      // 시간대별 데이터 계산
-      final timeGroups = <String, double>{};
-      for (var event in filteredEvents) {
-        final hours = event.actionExecutionTime / 60.0; // 분을 시간으로 변환
-        timeGroups[event.timegroup] =
-            (timeGroups[event.timegroup] ?? 0) + hours;
-      }
-
-      // 진행률 계산
-      final completedCount =
-          filteredEvents.where((e) => e.actionStatus == 'completed').length;
-      final totalCount = filteredEvents.length;
-      final progress = totalCount > 0 ? (completedCount / totalCount * 100) : 0;
-
-      print(
-          '데이터 준비 완료: ${filteredEvents.length}개 이벤트, ${timeGroups.length}개 시간대');
-
-      // AI 분석 결과 가져오기
-      String aiAnalysis = '';
-      try {
-        // 로컬 스토리지에서 AI 분석 결과 가져오기
-        final storageKey = 'ai_analysis_${widget.reportType}';
-        final savedData = html.window.localStorage[storageKey];
-
-        if (savedData != null) {
-          final data = jsonDecode(savedData);
-          final output = data['parsed'] as Map<String, dynamic>;
-
-          if (widget.reportType == 'daily') {
-            aiAnalysis = '''
-              <div class="card">
-                <h2 class="section-title">AI 분석</h2>
-                <div class="ai-analysis">
-                  <h3>오늘의 요약</h3>
-                  <p>${escapeHtml(output['today_summary'] ?? '')}</p>
-                  
-                  <h3>주의사항</h3>
-                  <p>${escapeHtml(output['today_issue_point'] ?? '')}</p>
-                  
-                  <h3>내일의 계획</h3>
-                  <p>${escapeHtml(output['tomorrow_summary'] ?? '')}</p>
-                  
-                  <h3>주의사항</h3>
-                  <p>${escapeHtml(output['tomorrow_issue_point'] ?? '')}</p>
-                </div>
-              </div>
-            ''';
-          }
-        } else {
-          aiAnalysis = '''
-            <div class="card">
-              <h2 class="section-title">AI 분석</h2>
-              <p style="color: #666;">AI 분석 결과가 없습니다. AI 분석을 먼저 실행해주세요.</p>
-            </div>
-          ''';
-        }
-      } catch (e) {
-        print('저장된 AI 분석 결과 가져오기 실패: $e');
-        aiAnalysis = '''
-          <div class="card">
-            <h2 class="section-title">AI 분석</h2>
-            <p style="color: #666;">저장된 AI 분석 결과를 가져오는 중 오류가 발생했습니다.</p>
-          </div>
-        ''';
-      }
-
-      final reportHtml = '''
-        <!DOCTYPE html>
-        <html lang="ko">
-        <head>
-          <meta charset="UTF-8">
-          <title>${widget.reportType == 'daily' ? '일간' : widget.reportType == 'weekly' ? '주간' : '월간'} 목표 평가 리포트</title>
-          <style>
-            body { 
-              font-family: -apple-system, BlinkMacSystemFont, sans-serif; 
-              line-height: 1.6; 
-              color: #333; 
-              margin: 0;
-              padding: 20px;
-              background-color: #f5f5f5;
-            }
-            .container {
-              max-width: 800px;
-              margin: 0 auto;
-            }
-            .card {
-              background: #fff;
-              border-radius: 8px;
-              box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-              margin-bottom: 20px;
-              padding: 20px;
-            }
-            .section-title {
-              color: #333;
-              border-bottom: 2px solid #eee;
-              padding-bottom: 10px;
-              margin-bottom: 20px;
-            }
-            .progress-container {
-              margin: 20px 0;
-            }
-            .progress-bar {
-              background: #e0e0e0;
-              border-radius: 4px;
-              height: 20px;
-              overflow: hidden;
-            }
-            .progress-fill {
-              background: #4CAF50;
-              height: 100%;
-              transition: width 0.3s ease;
-            }
-            .stats-grid {
-              display: grid;
-              grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-              gap: 20px;
-              margin: 20px 0;
-            }
-            .stat-card {
-              background: #f8f9fa;
-              padding: 15px;
-              border-radius: 8px;
-              text-align: center;
-            }
-            .ai-analysis h3 {
-              color: #2196F3;
-              margin-top: 20px;
-              margin-bottom: 10px;
-            }
-            .ai-analysis p {
-              color: #666;
-              margin-bottom: 15px;
-              line-height: 1.6;
-            }
-          </style>
-        </head>
-        <body>
-          <div class="container">
-            <h1 style="text-align: center; color: #2196F3;">일일 목표 평가 리포트</h1>
-            
-            <!-- AI 분석 결과 추가 -->
-            $aiAnalysis
-            
-            <div class="card">
-              <h2 class="section-title">시간대별 실행 시간</h2>
-              <div style="display: flex; justify-content: space-between; margin-bottom: 20px;">
-                <div style="flex: 1;">
-                  <table style="width: 100%; border-collapse: collapse;">
-                    <tr style="background-color: #f5f5f5;">
-                      <th style="padding: 12px; text-align: left; border: 1px solid #ddd;">시간</th>
-                      <th style="padding: 12px; text-align: left; border: 1px solid #ddd;">업무</th>
-                    </tr>
-                    ${([
-        ...filteredEvents
-      ]..sort((a, b) => a.startTime.compareTo(b.startTime))).map((e) => '''
-                        <tr>
-                          <td style="padding: 12px; border: 1px solid #ddd;">
-                            ${DateFormat('HH:mm').format(e.startTime)} - ${DateFormat('HH:mm').format(e.endTime)}
-                          </td>
-                          <td style="padding: 12px; border: 1px solid #ddd;">${escapeHtml(e.actionName)}</td>
-                        </tr>
-                      ''').join('')}
-                  </table>
-                </div>
-              </div>
-            </div>
-
-            <div class="card">
-              <h2 class="section-title">진행 상황 요약</h2>
-              <div class="progress-container">
-                <div class="progress-bar">
-                  <div class="progress-fill" style="width: ${progress}%"></div>
-                </div>
-                <p style="text-align: center;">
-                  전체 진행률: ${progress.toStringAsFixed(1)}% (${completedCount}/${totalCount})
-                </p>
-              </div>
-              
-              <div class="stats-grid">
-                <div class="stat-card">
-                  <h3>전체 액션</h3>
-                  <p style="font-size: 24px; font-weight: bold;">${totalCount}개</p>
-                </div>
-                <div class="stat-card">
-                  <h3>완료된 액션</h3>
-                  <p style="font-size: 24px; font-weight: bold;">${completedCount}개</p>
-                </div>
-              </div>
-            </div>
-
-            <div class="card">
-              <h2 class="section-title">액션 목록</h2>
-              <div style="max-height: 500px; overflow-y: auto;">
-                ${filteredEvents.map((e) => '''
-                  <div style="padding: 12px; border-bottom: 1px solid #eee; display: flex; align-items: center;">
-                    <span style="margin-right: 12px; font-size: 20px;">
-                      ${e.actionStatus == 'completed' ? '✅' : '⬜️'}
-                    </span>
-                    <div>
-                      <strong>${escapeHtml(e.actionName)}</strong>
-                      <br>
-                      <small style="color: #666;">
-                        ${escapeHtml(e.goalName)}
-                        ${e.tags.isNotEmpty ? '<br>태그: ${escapeHtml(e.tags.join(", "))}' : ''}
-                      </small>
-                    </div>
-                  </div>
-                ''').join('')}
-              </div>
-            </div>
-          </div>
-        </body>
-        </html>
-      ''';
-
-      print('HTML 리포트 생성 완료: ${reportHtml.length} 바이트');
-      return reportHtml;
-    } catch (e) {
-      print('HTML 리포트 생성 중 오류: $e');
-      return null;
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Card(
-      margin: const EdgeInsets.all(8.0),
-      child: ExpansionTile(
-        title: const Text(
-          '📧 리포트 이메일로 받기',
-          style: TextStyle(
-            fontSize: 14,
-            fontWeight: FontWeight.w500,
-          ),
-        ),
-        onExpansionChanged: (expanded) {
-          setState(() => _isExpanded = expanded);
-        },
-        children: [
-          Padding(
-            padding: const EdgeInsets.all(16.0),
-            child: Row(
-              children: [
-                Expanded(
-                  child: SizedBox(
-                    height: 40, // 버튼 높이와 동일하게 설정
-                    child: TextField(
-                      controller: _emailController,
-                      decoration: const InputDecoration(
-                        hintText: '이메일 주소 입력',
-                        hintStyle: TextStyle(fontSize: 13),
-                        contentPadding:
-                            EdgeInsets.symmetric(horizontal: 12, vertical: 0),
-                        border: OutlineInputBorder(),
-                      ),
-                      style: const TextStyle(fontSize: 13),
-                      keyboardType: TextInputType.emailAddress,
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                SizedBox(
-                  height: 40,
-                  child: ElevatedButton.icon(
-                    onPressed: _isSending ? null : _sendEmail,
-                    icon: _isSending
-                        ? const SizedBox(
-                            width: 16,
-                            height: 16,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : const Icon(Icons.send, size: 16),
-                    label: Text(
-                      _isSending ? '전송 중...' : '전송하기',
-                      style: const TextStyle(fontSize: 13),
-                    ),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: TimeTrekTheme.vitaflowBrandColor,
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(horizontal: 12),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-// ActionHistory 데이터 모델 추가
-class ActionHistoryData {
-  final String actionId;
-  final String actionName;
-  final String goalName;
-  final DateTime timestamp;
-  final String actionStatus;
-  final String? actionStatusDescription;
-  final String? attachedImage;
-  final String? attachedFile;
-  final String? attachedImageName;
-  final String? attachedFileName;
-  final double actionExecutionTime;
-  final DateTime? startTime;
-  final DateTime? endTime;
-  final String? timegroup;
-  final List<String> tags;
-
-  ActionHistoryData({
-    required this.actionId,
-    required this.actionName,
-    required this.goalName,
-    required this.timestamp,
-    required this.actionStatus,
-    this.actionStatusDescription,
-    this.attachedImage,
-    this.attachedFile,
-    this.attachedImageName,
-    this.attachedFileName,
-    required this.actionExecutionTime,
-    this.startTime,
-    this.endTime,
-    this.timegroup,
-    this.tags = const [],
-  });
-
-  factory ActionHistoryData.fromMap(Map<String, dynamic> map) {
-    return ActionHistoryData(
-      actionId: map['action_id'] ?? '',
-      actionName: map['action_name'] ?? '',
-      goalName: map['goal_name'] ?? '',
-      timestamp: (map['timestamp'] as Timestamp).toDate(),
-      actionStatus: map['action_status'] ?? '',
-      actionStatusDescription: map['action_status_description'],
-      attachedImage: map['attached_image'],
-      attachedFile: map['attached_file'],
-      attachedImageName: map['attached_image_name'],
-      attachedFileName: map['attached_file_name'],
-      actionExecutionTime: (map['action_execution_time'] ?? 0).toDouble(),
-      startTime: map['startTime'] is Timestamp
-          ? (map['startTime'] as Timestamp).toDate()
-          : null,
-      endTime: map['endTime'] is Timestamp
-          ? (map['endTime'] as Timestamp).toDate()
-          : null,
-      timegroup: map['timegroup'],
-      tags: List<String>.from(map['tags'] ?? []),
     );
   }
 }

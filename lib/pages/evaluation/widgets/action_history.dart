@@ -12,6 +12,7 @@ import '../../../components/file_storage_utils.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 import 'dart:html' as html;
+import '../models/action_event_data.dart';
 
 // ... ActionHistoryTimeline 클래스 전체
 // ... ActionHistoryTimelineList 클래스 전체

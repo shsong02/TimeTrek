@@ -2,7 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:intl/intl.dart';
 import '/theme/time_trek_theme.dart';
-import '../goal_evaluation.dart';  // ActionEventData 모델용
+import '../goal_evaluation.dart'; // ActionEventData 모델용
+import '../models/action_event_data.dart';
 
 // ... ProgressBarChart 클래스 전체
 // ... ProgressBarChartCheckList 클래스 전체
@@ -24,21 +25,20 @@ class ProgressBarChart extends StatelessWidget {
     required this.noActionStatus,
   }) : super(key: key);
 
-
   @override
   Widget build(BuildContext context) {
     // 시간 간격 계산 수정
     final totalDuration = endTime.difference(startTime);
     final isWithinDay = totalDuration.inHours <= 24;
-    final intervalDuration = isWithinDay 
-        ? const Duration(hours: 2)  // 2시간 단위
-        : totalDuration.inDays <= 7 
-            ? const Duration(days: 1)  // 1일 단위
-            : const Duration(days: 2);  // 2일 단위
+    final intervalDuration = isWithinDay
+        ? const Duration(hours: 2) // 2시간 단위
+        : totalDuration.inDays <= 7
+            ? const Duration(days: 1) // 1일 단위
+            : const Duration(days: 2); // 2일 단위
 
     // 전체 구간 수 계산 수정
     final totalIntervals = isWithinDay
-        ? 12  // 24시간을 2시간 간격으로 나누면 12개 구간
+        ? 12 // 24시간을 2시간 간격으로 나누면 12개 구간
         : totalDuration.inDays <= 7
             ? totalDuration.inDays + 1
             : (totalDuration.inDays / 2).ceil();
@@ -54,12 +54,12 @@ class ProgressBarChart extends StatelessWidget {
 
     // 필터링된 이벤트에 대한 시간 계산
     final filteredEvents = actionEvents.where((event) {
-      final isInTimeRange = event.startTime.isAfter(startTime) && 
-                          event.endTime.isBefore(endTime);
+      final isInTimeRange =
+          event.startTime.isAfter(startTime) && event.endTime.isBefore(endTime);
       final isInTimegroup = timegroup.isEmpty || event.timegroup == timegroup;
       final hasTag = tag.isEmpty || tag.any((t) => event.tags.contains(t));
       final isNotExcluded = !noActionStatus.contains(event.actionStatus);
-      
+
       return isInTimeRange && isInTimegroup && hasTag && isNotExcluded;
     }).toList();
 
@@ -68,7 +68,7 @@ class ProgressBarChart extends StatelessWidget {
       var currentTime = event.startTime;
       while (currentTime.isBefore(event.endTime)) {
         final periodIndex = isWithinDay
-            ? currentTime.hour ~/ 2  // 2시간 단위로 인덱스 계산
+            ? currentTime.hour ~/ 2 // 2시간 단위로 인덱스 계산
             : totalDuration.inDays <= 7
                 ? currentTime.difference(startTime).inDays
                 : currentTime.difference(startTime).inDays ~/ 2;
@@ -78,11 +78,12 @@ class ProgressBarChart extends StatelessWidget {
 
         // 실행 시간 계산 (구간에 걸쳐있는 시간만큼 분배)
         final periodEnd = currentTime.add(intervalDuration);
-        final eventEndInPeriod = event.endTime.isBefore(periodEnd) 
-            ? event.endTime 
-            : periodEnd;
-        final durationInPeriod = eventEndInPeriod.difference(currentTime).inMinutes;
-        final totalDurationMinutes = event.endTime.difference(event.startTime).inMinutes;
+        final eventEndInPeriod =
+            event.endTime.isBefore(periodEnd) ? event.endTime : periodEnd;
+        final durationInPeriod =
+            eventEndInPeriod.difference(currentTime).inMinutes;
+        final totalDurationMinutes =
+            event.endTime.difference(event.startTime).inMinutes;
         final ratio = durationInPeriod / totalDurationMinutes;
         final timeInPeriod = event.actionExecutionTime * ratio;
 
@@ -132,28 +133,34 @@ class ProgressBarChart extends StatelessWidget {
               child: BarChart(
                 BarChartData(
                   alignment: BarChartAlignment.spaceAround,
-                  maxY: scheduledTimeByPeriod.isEmpty ? 10 : 
-                        scheduledTimeByPeriod.values.reduce((a, b) => a > b ? a : b) * 1.2,
+                  maxY: scheduledTimeByPeriod.isEmpty
+                      ? 10
+                      : scheduledTimeByPeriod.values
+                              .reduce((a, b) => a > b ? a : b) *
+                          1.2,
                   barTouchData: BarTouchData(
                     enabled: true,
                     touchTooltipData: BarTouchTooltipData(
                       tooltipBgColor: Colors.black87,
                       getTooltipItem: (group, groupIndex, rod, rodIndex) {
-                        final periodEvents = eventsByPeriod[group.x.toInt()] ?? [];
+                        final periodEvents =
+                            eventsByPeriod[group.x.toInt()] ?? [];
                         if (periodEvents.isEmpty) return null;
 
-                        final tooltipText = rodIndex == 0 
-                            ? '예정된 액션:\n' 
-                            : '완료된 액션:\n';
-                        
+                        final tooltipText =
+                            rodIndex == 0 ? '예정된 액션:\n' : '완료된 액션:\n';
+
                         final displayEvents = periodEvents.take(4).toList();
-                        final remainingCount = periodEvents.length - displayEvents.length;
-                        
-                        final tooltipContent = tooltipText + displayEvents
-                            .map((e) => '${e.actionName} (${e.actionExecutionTime}h)')
-                            .join('\n') +
+                        final remainingCount =
+                            periodEvents.length - displayEvents.length;
+
+                        final tooltipContent = tooltipText +
+                            displayEvents
+                                .map((e) =>
+                                    '${e.actionName} (${e.actionExecutionTime}h)')
+                                .join('\n') +
                             (remainingCount > 0 ? '\n외 $remainingCount개' : '');
-                        
+
                         return BarTooltipItem(
                           tooltipContent,
                           const TextStyle(
@@ -172,7 +179,9 @@ class ProgressBarChart extends StatelessWidget {
                         reservedSize: 28,
                         getTitlesWidget: (value, meta) {
                           if (isWithinDay) {
-                            final hour = startTime.add(Duration(hours: value.toInt() * 2)).hour;
+                            final hour = startTime
+                                .add(Duration(hours: value.toInt() * 2))
+                                .hour;
                             if (hour % 4 != 0) {
                               return const SizedBox.shrink();
                             }
@@ -188,7 +197,8 @@ class ProgressBarChart extends StatelessWidget {
                               ),
                             );
                           } else if (totalDuration.inDays <= 7) {
-                            final date = startTime.add(Duration(days: value.toInt()));
+                            final date =
+                                startTime.add(Duration(days: value.toInt()));
                             return Padding(
                               padding: const EdgeInsets.only(top: 8.0),
                               child: Text(
@@ -201,7 +211,8 @@ class ProgressBarChart extends StatelessWidget {
                               ),
                             );
                           } else {
-                            final date = startTime.add(Duration(days: value.toInt() * 2));
+                            final date = startTime
+                                .add(Duration(days: value.toInt() * 2));
                             if (date.day % 5 == 0) {
                               return Padding(
                                 padding: const EdgeInsets.only(top: 8.0),
@@ -227,7 +238,7 @@ class ProgressBarChart extends StatelessWidget {
                         interval: 2,
                         getTitlesWidget: (value, meta) {
                           if (value == meta.max) return const SizedBox.shrink();
-                          
+
                           return Padding(
                             padding: const EdgeInsets.only(right: 8.0),
                             child: Text(
@@ -281,7 +292,8 @@ class ProgressBarChart extends StatelessWidget {
                         // 예상 실행 시간 막대 (뒤에 배치)
                         BarChartRodData(
                           toY: scheduledTime,
-                          color: TimeTrekTheme.vitaflowBrandColor.withOpacity(0.3),
+                          color:
+                              TimeTrekTheme.vitaflowBrandColor.withOpacity(0.3),
                           width: 16,
                           borderRadius: const BorderRadius.only(
                             topLeft: Radius.circular(4),
@@ -291,7 +303,8 @@ class ProgressBarChart extends StatelessWidget {
                         // 실제 실행 시간 막대 (앞에 배치)
                         BarChartRodData(
                           toY: completedTime,
-                          color: TimeTrekTheme.proudMomentColor.withOpacity(0.8),
+                          color:
+                              TimeTrekTheme.proudMomentColor.withOpacity(0.8),
                           width: 12, // 약간 더 좁게 만들어서 뒤의 막대가 보이도록 함
                           borderRadius: const BorderRadius.only(
                             topLeft: Radius.circular(4),
@@ -359,8 +372,8 @@ class ProgressBarChartCheckList extends StatelessWidget {
   Widget build(BuildContext context) {
     // 시간 범위 내의 액션들을 필터링
     final filteredActions = actionEvents.where((event) {
-      return event.startTime.isAfter(startTime) && 
-             event.endTime.isBefore(endTime);
+      return event.startTime.isAfter(startTime) &&
+          event.endTime.isBefore(endTime);
     }).toList();
 
     // 목표별로 그룹화
@@ -376,7 +389,7 @@ class ProgressBarChartCheckList extends StatelessWidget {
       itemBuilder: (context, index) {
         final goalName = groupedByGoal.keys.elementAt(index);
         final actions = groupedByGoal[goalName]!;
-        
+
         return ExpansionTile(
           title: Row(
             mainAxisSize: MainAxisSize.min,
@@ -402,7 +415,7 @@ class ProgressBarChartCheckList extends StatelessWidget {
               itemBuilder: (context, actionIndex) {
                 final action = actions[actionIndex];
                 final progress = action.actionStatus == 'completed' ? 1.0 : 0.0;
-                
+
                 return ListTile(
                   title: Text(action.actionName),
                   subtitle: Column(
@@ -423,8 +436,8 @@ class ProgressBarChartCheckList extends StatelessWidget {
                     ],
                   ),
                   trailing: Icon(
-                    action.actionStatus == 'completed' 
-                        ? Icons.check_circle 
+                    action.actionStatus == 'completed'
+                        ? Icons.check_circle
                         : Icons.pending,
                     color: action.actionStatus == 'completed'
                         ? Colors.green
