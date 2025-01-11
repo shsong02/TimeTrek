@@ -119,23 +119,6 @@ class _EmailReportWidgetState extends State<EmailReportWidget> {
               (!widget.hideCompleted || e.actionStatus != 'completed'))
           .toList();
 
-      // 시간대별 데이터 계산
-      final timeGroups = <String, double>{};
-      for (var event in filteredEvents) {
-        final hours = event.actionExecutionTime / 60.0; // 분을 시간으로 변환
-        timeGroups[event.timegroup] =
-            (timeGroups[event.timegroup] ?? 0) + hours;
-      }
-
-      // 진행률 계산
-      final completedCount =
-          filteredEvents.where((e) => e.actionStatus == 'completed').length;
-      final totalCount = filteredEvents.length;
-      final progress = totalCount > 0 ? (completedCount / totalCount * 100) : 0;
-
-      print(
-          '데이터 준비 완료: ${filteredEvents.length}개 이벤트, ${timeGroups.length}개 시간대');
-
       // AI 분석 결과 가져오기
       String aiAnalysis = '';
       try {
@@ -146,7 +129,6 @@ class _EmailReportWidgetState extends State<EmailReportWidget> {
           final data = jsonDecode(savedData);
           final output = data['parsed'] as Map<String, dynamic>;
 
-          // 리포트 타입에 따른 AI 분석 결과 표시
           switch (widget.reportType) {
             case 'daily':
               aiAnalysis = _generateDailyAnalysis(output);
@@ -166,12 +148,30 @@ class _EmailReportWidgetState extends State<EmailReportWidget> {
         aiAnalysis = _generateErrorAnalysis();
       }
 
+      // 리포트 타입별 제목 설정
+      String reportTitle = '';
+      switch (widget.reportType) {
+        case 'daily':
+          reportTitle =
+              '일간 목표 평가 리포트 (${DateFormat('yyyy년 MM월 dd일').format(widget.startTime)})';
+          break;
+        case 'weekly':
+          reportTitle =
+              '주간 목표 평가 리포트 (${DateFormat('MM/dd').format(widget.startTime)} - ${DateFormat('MM/dd').format(widget.endTime)})';
+          break;
+        case 'monthly':
+          reportTitle =
+              '월간 목표 평가 리포트 (${DateFormat('yyyy년 MM월').format(widget.startTime)})';
+          break;
+      }
+
+      // 공통 스타일 부분은 유지
       final reportHtml = '''
         <!DOCTYPE html>
         <html lang="ko">
         <head>
           <meta charset="UTF-8">
-          <title>${widget.reportType == 'daily' ? '일간' : widget.reportType == 'weekly' ? '주간' : '월간'} 목표 평가 리포트</title>
+          <title>$reportTitle</title>
           <style>
             body { 
               font-family: -apple-system, BlinkMacSystemFont, sans-serif; 
@@ -238,89 +238,165 @@ class _EmailReportWidgetState extends State<EmailReportWidget> {
         </head>
         <body>
           <div class="container">
-            <h1 style="text-align: center; color: #2196F3;">일일 목표 평가 리포트</h1>
+            <h1 style="text-align: center; color: #2196F3;">$reportTitle</h1>
             
-            <!-- AI 분석 결과 추가 -->
+            <!-- AI 분석 결과 -->
             $aiAnalysis
             
-            <div class="card">
-              <h2 class="section-title">시간대별 실행 시간</h2>
-              <div style="display: flex; justify-content: space-between; margin-bottom: 20px;">
-                <div style="flex: 1;">
-                  <table style="width: 100%; border-collapse: collapse;">
-                    <tr style="background-color: #f5f5f5;">
-                      <th style="padding: 12px; text-align: left; border: 1px solid #ddd;">시간</th>
-                      <th style="padding: 12px; text-align: left; border: 1px solid #ddd;">업무</th>
-                    </tr>
-                    ${([
-        ...filteredEvents
-      ]..sort((a, b) => a.startTime.compareTo(b.startTime))).map((e) => '''
-                        <tr>
-                          <td style="padding: 12px; border: 1px solid #ddd;">
-                            ${DateFormat('HH:mm').format(e.startTime)} - ${DateFormat('HH:mm').format(e.endTime)}
-                          </td>
-                          <td style="padding: 12px; border: 1px solid #ddd;">${escapeHtml(e.actionName)}</td>
-                        </tr>
-                      ''').join('')}
-                  </table>
-                </div>
-              </div>
-            </div>
-
+            <!-- 진행 상황 요약 -->
             <div class="card">
               <h2 class="section-title">진행 상황 요약</h2>
-              <div class="progress-container">
-                <div class="progress-bar">
-                  <div class="progress-fill" style="width: ${progress}%"></div>
-                </div>
-                <p style="text-align: center;">
-                  전체 진행률: ${progress.toStringAsFixed(1)}% (${completedCount}/${totalCount})
-                </p>
-              </div>
-              
-              <div class="stats-grid">
-                <div class="stat-card">
-                  <h3>전체 액션</h3>
-                  <p style="font-size: 24px; font-weight: bold;">${totalCount}개</p>
-                </div>
-                <div class="stat-card">
-                  <h3>완료된 액션</h3>
-                  <p style="font-size: 24px; font-weight: bold;">${completedCount}개</p>
-                </div>
-              </div>
+              ${_generateProgressSummary(filteredEvents)}
             </div>
 
+            <!-- 시간대별 실행 시간 -->
             <div class="card">
-              <h2 class="section-title">액션 목록</h2>
-              <div style="max-height: 500px; overflow-y: auto;">
-                ${filteredEvents.map((e) => '''
-                  <div style="padding: 12px; border-bottom: 1px solid #eee; display: flex; align-items: center;">
-                    <span style="margin-right: 12px; font-size: 20px;">
-                      ${e.actionStatus == 'completed' ? '✅' : '⬜️'}
-                    </span>
-                    <div>
-                      <strong>${escapeHtml(e.actionName)}</strong>
-                      <br>
-                      <small style="color: #666;">
-                        ${escapeHtml(e.goalName)}
-                        ${e.tags.isNotEmpty ? '<br>태그: ${escapeHtml(e.tags.join(", "))}' : ''}
-                      </small>
-                    </div>
-                  </div>
-                ''').join('')}
-              </div>
+              <h2 class="section-title">시간대별 실행 시간</h2>
+              ${_generateTimeTable(filteredEvents)}
             </div>
+
+            <!-- 리포트 타입별 추가 섹션 -->
+            ${_generateTypeSpecificSections(filteredEvents)}
           </div>
         </body>
         </html>
       ''';
 
-      print('HTML 리포트 생성 완료: ${reportHtml.length} 바이트');
       return reportHtml;
     } catch (e) {
       print('HTML 리포트 생성 중 오류: $e');
       return null;
     }
+  }
+
+  String _generateProgressSummary(List<ActionEventData> events) {
+    final completedCount =
+        events.where((e) => e.actionStatus == 'completed').length;
+    final totalCount = events.length;
+    final progress = totalCount > 0 ? (completedCount / totalCount * 100) : 0;
+
+    return '''
+      <div class="progress-container">
+        <div class="progress-bar">
+          <div class="progress-fill" style="width: ${progress}%"></div>
+        </div>
+        <p style="text-align: center;">
+          전체 진행률: ${progress.toStringAsFixed(1)}% ($completedCount/$totalCount)
+        </p>
+      </div>
+      
+      <div class="stats-grid">
+        <div class="stat-card">
+          <h3>전체 액션</h3>
+          <p style="font-size: 24px; font-weight: bold;">$totalCount개</p>
+        </div>
+        <div class="stat-card">
+          <h3>완료된 액션</h3>
+          <p style="font-size: 24px; font-weight: bold;">$completedCount개</p>
+        </div>
+      </div>
+    ''';
+  }
+
+  String _generateTimeTable(List<ActionEventData> events) {
+    return '''
+      <div style="display: flex; justify-content: space-between; margin-bottom: 20px;">
+        <div style="flex: 1;">
+          <table style="width: 100%; border-collapse: collapse;">
+            <tr style="background-color: #f5f5f5;">
+              ${widget.reportType != 'daily' ? '<th style="padding: 12px; text-align: left; border: 1px solid #ddd;">날짜</th>' : ''}
+              <th style="padding: 12px; text-align: left; border: 1px solid #ddd;">시간</th>
+              <th style="padding: 12px; text-align: left; border: 1px solid #ddd;">업무</th>
+            </tr>
+            ${([
+      ...events
+    ]..sort((a, b) => a.startTime.compareTo(b.startTime))).map((e) => '''
+              <tr>
+                ${widget.reportType != 'daily' ? '<td style="padding: 12px; border: 1px solid #ddd;">${DateFormat('MM/dd').format(e.startTime)}</td>' : ''}
+                <td style="padding: 12px; border: 1px solid #ddd;">
+                  ${DateFormat('HH:mm').format(e.startTime)} - ${DateFormat('HH:mm').format(e.endTime)}
+                </td>
+                <td style="padding: 12px; border: 1px solid #ddd;">${escapeHtml(e.actionName)}</td>
+              </tr>
+            ''').join('')}
+          </table>
+        </div>
+      </div>
+    ''';
+  }
+
+  String _generateTypeSpecificSections(List<ActionEventData> events) {
+    switch (widget.reportType) {
+      case 'daily':
+        return _generateDailySpecificSections(events);
+      case 'weekly':
+        return _generateWeeklySpecificSections(events);
+      case 'monthly':
+        return _generateMonthlySpecificSections(events);
+      default:
+        return '';
+    }
+  }
+
+  String _generateDailySpecificSections(List<ActionEventData> events) {
+    return '''
+      <div class="card">
+        <h2 class="section-title">오늘의 액션 목록</h2>
+        ${_generateActionList(events)}
+      </div>
+    ''';
+  }
+
+  String _generateWeeklySpecificSections(List<ActionEventData> events) {
+    // 일별 진행 상황 추가
+    final dailyProgress = _generateDailyProgressChart(events);
+    return '''
+      <div class="card">
+        <h2 class="section-title">일별 진행 상황</h2>
+        $dailyProgress
+      </div>
+      <div class="card">
+        <h2 class="section-title">주간 액션 목록</h2>
+        ${_generateActionList(events)}
+      </div>
+    ''';
+  }
+
+  String _generateMonthlySpecificSections(List<ActionEventData> events) {
+    // 주별 진행 상황 추가
+    final weeklyProgress = _generateWeeklyProgressChart(events);
+    return '''
+      <div class="card">
+        <h2 class="section-title">주별 진행 상황</h2>
+        $weeklyProgress
+      </div>
+      <div class="card">
+        <h2 class="section-title">월간 액션 목록</h2>
+        ${_generateActionList(events)}
+      </div>
+    ''';
+  }
+
+  String _generateActionList(List<ActionEventData> events) {
+    return '''
+      <div style="max-height: 500px; overflow-y: auto;">
+        ${events.map((e) => '''
+          <div style="padding: 12px; border-bottom: 1px solid #eee; display: flex; align-items: center;">
+            <span style="margin-right: 12px; font-size: 20px;">
+              ${e.actionStatus == 'completed' ? '✅' : '⬜️'}
+            </span>
+            <div>
+              <strong>${escapeHtml(e.actionName)}</strong>
+              <br>
+              <small style="color: #666;">
+                ${escapeHtml(e.goalName)}
+                ${e.tags.isNotEmpty ? '<br>태그: ${escapeHtml(e.tags.join(", "))}' : ''}
+              </small>
+            </div>
+          </div>
+        ''').join('')}
+      </div>
+    ''';
   }
 
   String _convertToHtml(String text) {
@@ -371,18 +447,23 @@ class _EmailReportWidgetState extends State<EmailReportWidget> {
         <h2 class="section-title">AI 분석</h2>
         <div class="ai-analysis">
           <div class="analysis-section">
-            <h3>주간 요약</h3>
-            <p>${_convertToHtml(output['weekly_summary'] ?? '')}</p>
+            <h3>이번 주 요약</h3>
+            <p>${_convertToHtml(output['thisweek_summary'] ?? '')}</p>
           </div>
           
           <div class="analysis-section">
-            <h3>개선점</h3>
-            <p>${_convertToHtml(output['improvement_points'] ?? '')}</p>
+            <h3>지연된 작업 및 이슈</h3>
+            <p>${_convertToHtml(output['thisweek_pedning_issue'] ?? '')}</p>
           </div>
           
           <div class="analysis-section">
-            <h3>다음 주 계획</h3>
-            <p>${_convertToHtml(output['next_week_plan'] ?? '')}</p>
+            <h3>완료 예상 분석</h3>
+            <p>${_convertToHtml(output['thisweek_completed_estimation'] ?? '')}</p>
+          </div>
+          
+          <div class="analysis-section">
+            <h3>목표 달성 평가</h3>
+            <p>${_convertToHtml(output['thisweek_goal_evaluation'] ?? '')}</p>
           </div>
         </div>
       </div>
@@ -427,6 +508,71 @@ class _EmailReportWidgetState extends State<EmailReportWidget> {
       <div class="card">
         <h2 class="section-title">AI 분석</h2>
         <p style="color: #666;">저장된 AI 분석 결과를 가져오는 중 오류가 발생했습니다.</p>
+      </div>
+    ''';
+  }
+
+  String _generateDailyProgressChart(List<ActionEventData> events) {
+    // 일별로 이벤트 그룹화
+    final dailyEvents = <DateTime, List<ActionEventData>>{};
+    for (var event in events) {
+      final date = DateTime(
+          event.startTime.year, event.startTime.month, event.startTime.day);
+      dailyEvents.putIfAbsent(date, () => []).add(event);
+    }
+
+    return '''
+      <div style="margin: 20px 0;">
+        ${dailyEvents.entries.map((entry) {
+      final completedCount =
+          entry.value.where((e) => e.actionStatus == 'completed').length;
+      final totalCount = entry.value.length;
+      final progress = totalCount > 0 ? (completedCount / totalCount * 100) : 0;
+
+      return '''
+            <div style="margin: 10px 0;">
+              <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
+                <span>${DateFormat('MM/dd').format(entry.key)}</span>
+                <span>${progress.toStringAsFixed(1)}%</span>
+              </div>
+              <div class="progress-bar">
+                <div class="progress-fill" style="width: ${progress}%"></div>
+              </div>
+            </div>
+          ''';
+    }).join('')}
+      </div>
+    ''';
+  }
+
+  String _generateWeeklyProgressChart(List<ActionEventData> events) {
+    // 주별로 이벤트 그룹화
+    final weeklyEvents = <int, List<ActionEventData>>{};
+    for (var event in events) {
+      final weekNumber = (event.startTime.day - 1) ~/ 7 + 1;
+      weeklyEvents.putIfAbsent(weekNumber, () => []).add(event);
+    }
+
+    return '''
+      <div style="margin: 20px 0;">
+        ${weeklyEvents.entries.map((entry) {
+      final completedCount =
+          entry.value.where((e) => e.actionStatus == 'completed').length;
+      final totalCount = entry.value.length;
+      final progress = totalCount > 0 ? (completedCount / totalCount * 100) : 0;
+
+      return '''
+            <div style="margin: 10px 0;">
+              <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
+                <span>${entry.key}주차</span>
+                <span>${progress.toStringAsFixed(1)}%</span>
+              </div>
+              <div class="progress-bar">
+                <div class="progress-fill" style="width: ${progress}%"></div>
+              </div>
+            </div>
+          ''';
+    }).join('')}
       </div>
     ''';
   }

@@ -621,7 +621,7 @@ class _InsightWeeklySummaryWidgetState
           ),
 
           EmailReportWidget(
-            reportType: 'daily',
+            reportType: 'weekly',
             actionEvents: widget.actionEvents,
             selectedTags: selectedTags,
             hideCompleted: hideCompleted,
@@ -848,7 +848,7 @@ class _InsightMonthlySummaryWidgetState
 
           // 이메일 리포트 위젯 추가
           EmailReportWidget(
-            reportType: 'daily',
+            reportType: 'monthly',
             actionEvents: widget.actionEvents,
             selectedTags: selectedTags,
             hideCompleted: hideCompleted,
