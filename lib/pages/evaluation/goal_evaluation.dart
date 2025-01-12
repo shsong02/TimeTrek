@@ -970,8 +970,8 @@ class AIAnalysisService {
     required DateTime endTime,
   }) async {
     final url = Uri.parse(
-        'https://shsong83.app.n8n.cloud/webhook-test/timetrek-goal-evaluation');
-    // 'https://shsong83.app.n8n.cloud/webhook/timetrek-goal-evaluation');
+        // 'https://shsong83.app.n8n.cloud/webhook-test/timetrek-goal-evaluation');
+        'https://shsong83.app.n8n.cloud/webhook/timetrek-goal-evaluation');
 
     try {
       final now = DateTime.now();
@@ -1144,7 +1144,7 @@ ${output['today_summary']}
 ### 주의사항
 ${output['today_issue_point']}
 
-## 내일의 계획
+### 내일의 계획
 ${output['tomorrow_summary']}
 
 ### 주의사항
@@ -1163,6 +1163,20 @@ ${output['thisweek_completed_estimation']}
 
 ### 목표 달성 평가
 ${output['thisweek_goal_evaluation']}
+''';
+      } else if (widget.type == 'monthly') {
+        markdownContent = '''
+## 이번 달 요약
+${output['thismonth_summary']}
+
+### 지연된 작업 및 이슈
+${output['thismonth_pending_issue']}
+
+### 완료 예상 분석
+${output['thismonth_completed_estimation']}
+
+### 남은 시간 및 목표 달성 가능성
+${output['thismonth_goal_overtime']}
 ''';
       }
 

@@ -476,18 +476,23 @@ class _EmailReportWidgetState extends State<EmailReportWidget> {
         <h2 class="section-title">AI 분석</h2>
         <div class="ai-analysis">
           <div class="analysis-section">
-            <h3>월간 요약</h3>
-            <p>${_convertToHtml(output['monthly_summary'] ?? '')}</p>
+            <h3>이번 달 요약</h3>
+            <p>${_convertToHtml(output['thismonth_summary'] ?? '')}</p>
           </div>
           
           <div class="analysis-section">
-            <h3>주요 성과</h3>
-            <p>${_convertToHtml(output['key_achievements'] ?? '')}</p>
+            <h3>지연된 작업 및 이슈</h3>
+            <p>${_convertToHtml(output['thismonth_pending_issue'] ?? '')}</p>
           </div>
           
           <div class="analysis-section">
-            <h3>다음 달 목표</h3>
-            <p>${_convertToHtml(output['next_month_goals'] ?? '')}</p>
+            <h3>완료 예상 분석</h3>
+            <p>${_convertToHtml(output['thismonth_completed_estimation'] ?? '')}</p>
+          </div>
+          
+          <div class="analysis-section">
+            <h3>남은 시간 및 목표 달성 가능성</h3>
+            <p>${_convertToHtml(output['thismonth_goal_overtime'] ?? '')}</p>
           </div>
         </div>
       </div>
@@ -562,16 +567,16 @@ class _EmailReportWidgetState extends State<EmailReportWidget> {
       final progress = totalCount > 0 ? (completedCount / totalCount * 100) : 0;
 
       return '''
-            <div style="margin: 10px 0;">
-              <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
-                <span>${entry.key}주차</span>
-                <span>${progress.toStringAsFixed(1)}%</span>
-              </div>
-              <div class="progress-bar">
-                <div class="progress-fill" style="width: ${progress}%"></div>
-              </div>
+          <div style="margin: 10px 0;">
+            <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
+              <span>${entry.key}주차</span>
+              <span>${progress.toStringAsFixed(1)}%</span>
             </div>
-          ''';
+            <div class="progress-bar">
+              <div class="progress-fill" style="width: ${progress}%"></div>
+            </div>
+          </div>
+        ''';
     }).join('')}
       </div>
     ''';
